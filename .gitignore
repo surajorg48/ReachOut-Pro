@@ -1,0 +1,29 @@
+# Node.js
+node_modules/
+npm-debug.log*
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# SQLite database (local data — don't commit)
+backend/data/
+
+# Gmail credentials — SENSITIVE, NEVER COMMIT
+backend/credentials/
+*.json
+!package.json
+!package-lock.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build output
+frontend/dist/
+frontend/.vite/
+
+# Logs
+*.log
+logs/
