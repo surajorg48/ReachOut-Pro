@@ -73,4 +73,15 @@ export const settingsApi = {
     saveTemplate: (content) => api.put('/settings/template', { content }),
 }
 
+// Resume Parser
+export const resumeApi = {
+    parse: (file, position) => {
+        const fd = new FormData()
+        fd.append('resume', file)
+        if (position) fd.append('position', position)
+        return api.post('/resume/parse', fd, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 90000 })
+    },
+    generateTemplate: (info, position) => api.post('/resume/generate-template', { info, position }),
+}
+
 export default api

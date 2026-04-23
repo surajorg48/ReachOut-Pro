@@ -13,12 +13,12 @@ app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:3000'], crede
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Routes
 app.use('/api/companies', require('./routes/companies'));
 app.use('/api/campaigns', require('./routes/campaigns'));
 app.use('/api/scraper', require('./routes/scraper'));
 app.use('/api/logs', require('./routes/email'));
 app.use('/api/settings', require('./routes/settings'));
+app.use('/api/resume', require('./routes/resume'));
 
 // Gmail OAuth callback
 app.get('/auth/callback', async (req, res) => {

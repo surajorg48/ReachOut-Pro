@@ -9,6 +9,7 @@ import Campaigns from './pages/Campaigns'
 import CampaignCompose from './pages/CampaignCompose'
 import EmailLog from './pages/EmailLog'
 import Settings from './pages/Settings'
+import ResumeAnalyzer from './pages/ResumeAnalyzer'
 
 function Sidebar({ gmailConnected }) {
     const location = useLocation()
@@ -36,6 +37,9 @@ function Sidebar({ gmailConnected }) {
                 </NavLink>
                 <NavLink to="/campaigns" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
                     <span className="nav-icon">📤</span> Campaigns
+                </NavLink>
+                <NavLink to="/resume" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+                    <span className="nav-icon">📄</span> Resume AI
                 </NavLink>
 
                 <div className="nav-section-title">Tracking</div>
@@ -92,6 +96,7 @@ export default function App() {
                         <Route path="/campaigns/new" element={<CampaignCompose />} />
                         <Route path="/campaigns/:id/edit" element={<CampaignCompose />} />
                         <Route path="/logs" element={<EmailLog />} />
+                        <Route path="/resume" element={<ResumeAnalyzer />} />
                         <Route path="/settings" element={<Settings onGmailChange={setGmailConnected} />} />
                         <Route path="*" element={
                             <div className="page-container">
