@@ -105,6 +105,25 @@ router.post('/bulk-status', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST bulk add (for discovered companies)
+router.post('/bulk-add', async (req, res) => {
+    try {
+        const { companies } = req.body;
+        if (!companies?.length) return res.status(400).json({ error: 'No companies provided' });
+        let added = 0;
+        for (const c of companies) {
+            const name = c.name || 'Unknown';
+            const website = c.website || '';
+            const exists = await db('companies').where('name', name).orWhere('website', website).first();
+            if (!exists) {
+                await db('companies').insert({ name, website, industry: c.industry || 'IT', city: c.city || '' });
+                added++;
+            }
+        }
+        res.json({ message: `Added ${added} companies to database`, added });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // POST import Excel
 router.post('/import-excel', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });

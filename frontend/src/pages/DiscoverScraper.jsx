@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import toast from 'react-hot-toast'
-import { scraperApi } from '../api'
+import { scraperApi, companiesApi } from '../api'
 
 const EXAMPLE_QUERIES = [
     'IT companies in Pune',
@@ -37,7 +37,10 @@ export default function DiscoverScraper({ onScrapeUrls }) {
                 if (data.step === 'found' && data.latest) {
                     setResults(prev => {
                         if (prev.some(r => r.website === data.latest.website)) return prev
-                        return [...prev, data.latest]
+                        const next = [...prev, data.latest]
+                        // Automatically select newly found items
+                        setSelected(new Set(next.map((_, idx) => idx)))
+                        return next
                     })
                 }
             } else if (data.type === 'discover_done') {
@@ -108,6 +111,24 @@ export default function DiscoverScraper({ onScrapeUrls }) {
         const urls = results.map(r => r.website)
         if (!urls.length) return toast.error('No companies found')
         if (onScrapeUrls) onScrapeUrls(urls)
+    }
+
+    // Save to outreach Database
+    const handleSaveSelectedToDb = async () => {
+        const companiesToSave = results.filter((_, i) => selected.has(i)).map(r => ({
+            name: r.name,
+            website: r.website,
+            industry: 'IT',
+            city: ''
+        }))
+        if (!companiesToSave.length) return toast.error('Select at least one company to save')
+        
+        try {
+            const res = await companiesApi.bulkAdd(companiesToSave)
+            toast.success(`💾 Saved ${res.data.added} companies directly to database!`)
+        } catch (e) {
+            toast.error(e.message)
+        }
     }
 
     return (
@@ -181,17 +202,22 @@ export default function DiscoverScraper({ onScrapeUrls }) {
                         <div className="card-title">
                             🏢 Discovered {results.length} Companies
                             {status === 'complete' && <span style={{ marginLeft: 8, fontSize: '0.75rem', color: 'var(--accent-success)', fontWeight: 400 }}>✅ Complete</span>}
+                            {searching && <span style={{ marginLeft: 8, fontSize: '0.75rem', color: 'var(--accent-info)', fontWeight: 400 }} className="animate-pulse">⏳ Discovering live...</span>}
                         </div>
-                        <div style={{ display: 'flex', gap: 8 }}>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             <button className="btn btn-ghost btn-sm" onClick={toggleAll}>
                                 {selected.size === results.length ? '☐ Deselect All' : '☑ Select All'}
+                            </button>
+                            <button className="btn btn-success btn-sm" onClick={handleSaveSelectedToDb}
+                                disabled={selected.size === 0}>
+                                💾 Save Selected to DB ({selected.size})
                             </button>
                             <button className="btn btn-primary btn-sm" onClick={handleScrapeSelected}
                                 disabled={selected.size === 0 || searching}>
                                 🚀 Scrape Selected ({selected.size})
                             </button>
                             <button className="btn btn-ghost btn-sm" onClick={handleScrapeAll} disabled={searching}>
-                                🚀 Scrape All
+                                🚀 Scrape All ({results.length})
                             </button>
                         </div>
                     </div>
@@ -201,7 +227,7 @@ export default function DiscoverScraper({ onScrapeUrls }) {
                             <thead>
                                 <tr>
                                     <th style={{ width: 40 }}>☑</th>
-                                    <th>Company</th>
+                                    <th>Company Details</th>
                                     <th>Website</th>
                                 </tr>
                             </thead>
@@ -211,9 +237,17 @@ export default function DiscoverScraper({ onScrapeUrls }) {
                                         <td>
                                             <input type="checkbox" checked={selected.has(i)}
                                                 onChange={() => toggleSelect(i)}
+                                                onClick={e => e.stopPropagation()}
                                                 style={{ accentColor: 'var(--accent-primary)' }} />
                                         </td>
-                                        <td className="bold">{r.name}</td>
+                                        <td>
+                                            <div className="bold">{r.name}</div>
+                                            {r.snippet && (
+                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4, fontStyle: 'italic', maxWidth: 600 }}>
+                                                    {r.snippet}
+                                                </div>
+                                            )}
+                                        </td>
                                         <td className="mono" style={{ fontSize: '0.78rem', color: 'var(--accent-info)' }}>
                                             <a href={r.website} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
                                                 style={{ color: 'var(--accent-info)' }}>
@@ -226,7 +260,7 @@ export default function DiscoverScraper({ onScrapeUrls }) {
                         </table>
                     </div>
                     <div className="alert alert-info" style={{ marginTop: 12 }}>
-                        💡 Select the companies you want, then click "Scrape Selected" to find HR emails & phone numbers from their websites.
+                        💡 Select the companies you want, then click "Scrape Selected" to find HR emails & phone numbers from their websites. Or click "Save Selected to DB" to store them in your companies outreach table directly.
                     </div>
                 </div>
             )}

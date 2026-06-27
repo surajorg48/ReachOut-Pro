@@ -16,6 +16,7 @@ export const companiesApi = {
     delete: (id) => api.delete(`/companies/${id}`),
     bulkDelete: (ids) => api.post('/companies/bulk-delete', { ids }),
     bulkStatus: (ids, status) => api.post('/companies/bulk-status', { ids, status }),
+    bulkAdd: (companies) => api.post('/companies/bulk-add', { companies }),
     addContact: (id, data) => api.post(`/companies/${id}/contacts`, data),
     deleteContact: (contactId) => api.delete(`/companies/contacts/${contactId}`),
     importExcel: (file) => {
