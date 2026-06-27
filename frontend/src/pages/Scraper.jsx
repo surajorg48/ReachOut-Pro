@@ -1,8 +1,13 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import { scraperApi } from '../api'
+import DiscoverScraper from './DiscoverScraper'
 
 const CONCURRENCY_OPTIONS = [1, 2, 3, 4, 6, 8]
+const TABS = [
+    { id: 'url', label: '🔗 URL Scraper', desc: 'Paste website URLs to scrape' },
+    { id: 'discover', label: '🌐 Discover & Scrape', desc: 'Search Google to find companies' },
+]
 
 function formatTime(seconds) {
     if (!seconds || seconds <= 0) return '—'
@@ -57,8 +62,15 @@ function EmailPickerPopup({ result, sessionId, onClose, onPicked }) {
 }
 
 export default function Scraper() {
+    const [activeTab, setActiveTab] = useState('url')
     const [urls, setUrls] = useState('')
     const [concurrency, setConcurrency] = useState(3)
+
+    const handleScrapeUrls = (urlList) => {
+        setUrls(urlList.join('\n'))
+        setActiveTab('url')
+        toast.success(`📋 Loaded ${urlList.length} company URLs into the scraper!`)
+    }
     const [sessionId, setSessionId] = useState(null)
     const [session, setSession] = useState(null) // { status, total, done, results }
     const [remainingSeconds, setRemainingSeconds] = useState(null)
@@ -228,88 +240,108 @@ export default function Scraper() {
                 <p>Discover HR emails & phones from IT company websites — parallel scraping with real-time results</p>
             </div>
 
+            {/* Tabs */}
+            {(!session || isDone) && (
+                <div className="tabs">
+                    {TABS.map(t => (
+                        <div
+                            key={t.id}
+                            className={`tab ${activeTab === t.id ? 'active' : ''}`}
+                            onClick={() => setActiveTab(t.id)}
+                            title={t.desc}
+                        >
+                            {t.label}
+                        </div>
+                    ))}
+                </div>
+            )}
+
             {/* Top Controls */}
             {!session || isDone ? (
-                <div className="grid-2" style={{ gap: 20, marginBottom: 20 }}>
-                    {/* Input Panel */}
-                    <div className="card">
-                        <div className="card-header">
-                            <div className="card-title">Enter Company Websites</div>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                                <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current.click()}>📂 Import Excel/CSV</button>
-                                <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleFileImport} />
+                activeTab === 'url' ? (
+                    <div className="grid-2" style={{ gap: 20, marginBottom: 20 }}>
+                        {/* Input Panel */}
+                        <div className="card">
+                            <div className="card-header">
+                                <div className="card-title">Enter Company Websites</div>
+                                <div style={{ display: 'flex', gap: 6 }}>
+                                    <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current.click()}>📂 Import Excel/CSV</button>
+                                    <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleFileImport} />
+                                </div>
                             </div>
+
+                            <div className="form-group" style={{ marginBottom: 12 }}>
+                                <label className="form-label">Website URLs (one per line)</label>
+                                <textarea className="textarea" style={{ minHeight: 180, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem' }}
+                                    value={urls} onChange={e => setUrls(e.target.value)}
+                                    placeholder={'https://company1.com\nhttps://company2.com\ncompany3.com'} />
+                            </div>
+
+                            {/* Concurrency */}
+                            <div className="form-group" style={{ marginBottom: 12 }}>
+                                <label className="form-label">Parallel Workers: <strong style={{ color: 'var(--accent-primary)' }}>{concurrency}</strong></label>
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                    {CONCURRENCY_OPTIONS.map(n => (
+                                        <button key={n}
+                                            className={`btn btn-sm ${concurrency === n ? 'btn-primary' : 'btn-ghost'}`}
+                                            onClick={() => setConcurrency(n)}>
+                                            {n}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                                    Higher = faster but may trigger rate limits. Recommended: 2–4.
+                                </div>
+                            </div>
+
+                            <div className="alert alert-info" style={{ marginBottom: 12 }}>
+                                💡 Scraper visits /contact, /careers, /about + uses Puppeteer for JS-heavy sites.
+                            </div>
+
+                            <button className="btn btn-primary btn-lg" style={{ width: '100%' }} onClick={handleStart}>
+                                🚀 Start Scraping {urls.split('\n').filter(u => u.trim()).length > 0 ? `(${urls.split('\n').filter(u => u.trim()).length} sites)` : ''}
+                            </button>
                         </div>
 
-                        <div className="form-group" style={{ marginBottom: 12 }}>
-                            <label className="form-label">Website URLs (one per line)</label>
-                            <textarea className="textarea" style={{ minHeight: 180, fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem' }}
-                                value={urls} onChange={e => setUrls(e.target.value)}
-                                placeholder={'https://company1.com\nhttps://company2.com\ncompany3.com'} />
-                        </div>
-
-                        {/* Concurrency */}
-                        <div className="form-group" style={{ marginBottom: 12 }}>
-                            <label className="form-label">Parallel Workers: <strong style={{ color: 'var(--accent-primary)' }}>{concurrency}</strong></label>
-                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                {CONCURRENCY_OPTIONS.map(n => (
-                                    <button key={n}
-                                        className={`btn btn-sm ${concurrency === n ? 'btn-primary' : 'btn-ghost'}`}
-                                        onClick={() => setConcurrency(n)}>
-                                        {n}
+                        {/* Quick Load */}
+                        <div className="card">
+                            <div className="card-header"><div className="card-title">⚡ Quick Load — Top IT Companies</div></div>
+                            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 12 }}>Click to add individual companies or load all at once</p>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+                                {predefinedUrls.map(u => (
+                                    <button key={u} className="btn btn-ghost btn-sm" style={{ fontSize: '0.72rem' }}
+                                        onClick={() => setUrls(prev => (prev ? prev + '\n' : '') + u)}>
+                                        + {u.replace('https://www.', '').replace('.com', '')}
                                     </button>
                                 ))}
                             </div>
-                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4 }}>
-                                Higher = faster but may trigger rate limits. Recommended: 2–4.
+                            <div className="divider" />
+                            <button className="btn btn-ghost" style={{ width: '100%', marginBottom: 12 }} onClick={() => setUrls(predefinedUrls.join('\n'))}>
+                                📋 Load All ({predefinedUrls.length} companies)
+                            </button>
+                            <div className="alert alert-warning">
+                                ⚠️ Scraping is subject to each site's robots.txt. Random delays are added between requests.
                             </div>
-                        </div>
 
-                        <div className="alert alert-info" style={{ marginBottom: 12 }}>
-                            💡 Scraper visits /contact, /careers, /about + uses Puppeteer for JS-heavy sites.
-                        </div>
-
-                        <button className="btn btn-primary btn-lg" style={{ width: '100%' }} onClick={handleStart}>
-                            🚀 Start Scraping {urls.split('\n').filter(u => u.trim()).length > 0 ? `(${urls.split('\n').filter(u => u.trim()).length} sites)` : ''}
-                        </button>
-                    </div>
-
-                    {/* Quick Load */}
-                    <div className="card">
-                        <div className="card-header"><div className="card-title">⚡ Quick Load — Top IT Companies</div></div>
-                        <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 12 }}>Click to add individual companies or load all at once</p>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
-                            {predefinedUrls.map(u => (
-                                <button key={u} className="btn btn-ghost btn-sm" style={{ fontSize: '0.72rem' }}
-                                    onClick={() => setUrls(prev => (prev ? prev + '\n' : '') + u)}>
-                                    + {u.replace('https://www.', '').replace('.com', '')}
-                                </button>
-                            ))}
-                        </div>
-                        <div className="divider" />
-                        <button className="btn btn-ghost" style={{ width: '100%', marginBottom: 12 }} onClick={() => setUrls(predefinedUrls.join('\n'))}>
-                            📋 Load All ({predefinedUrls.length} companies)
-                        </button>
-                        <div className="alert alert-warning">
-                            ⚠️ Scraping is subject to each site's robots.txt. Random delays are added between requests.
-                        </div>
-
-                        {isDone && session?.results?.length > 0 && (
-                            <div style={{ marginTop: 12 }}>
-                                <div className="divider" />
-                                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 8 }}>Last session results:</div>
-                                <div style={{ display: 'flex', gap: 8 }}>
-                                    <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => scraperApi.exportExcel(sessionId)}>
-                                        📥 Export Excel
-                                    </button>
-                                    <button className="btn btn-ghost" style={{ flex: 1 }} onClick={handleNewScrape}>
-                                        🔄 New Scrape
-                                    </button>
+                            {isDone && session?.results?.length > 0 && (
+                                <div style={{ marginTop: 12 }}>
+                                    <div className="divider" />
+                                    <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 8 }}>Last session results:</div>
+                                    <div style={{ display: 'flex', gap: 8 }}>
+                                        <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => scraperApi.exportExcel(sessionId)}>
+                                            📥 Export Excel
+                                        </button>
+                                        <button className="btn btn-ghost" style={{ flex: 1 }} onClick={handleNewScrape}>
+                                            🔄 New Scrape
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </div>
-                </div>
+                ) : (
+                    <DiscoverScraper onScrapeUrls={handleScrapeUrls} />
+                )
             ) : (
                 /* ── Active Session Status Bar ── */
                 <div className="card" style={{ marginBottom: 20 }}>

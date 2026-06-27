@@ -5,11 +5,13 @@ const path = require('path');
 const fs = require('fs');
 const db = require('../db/database');
 const { scrapeCompany } = require('../services/scraper.service');
+const { discoverCompanies } = require('../services/discover.service');
 const XLSX = require('xlsx');
 const upload = multer({ storage: multer.memoryStorage() });
 
 // ─── In-memory session store (survives tab switches, not server restarts) ───
 const scrapeSessions = new Map();
+const discoverSessions = new Map();
 const scraperSseClients = new Set();
 
 const DEFAULT_CONCURRENCY = 3; // scrapers running in parallel
@@ -306,6 +308,107 @@ router.get('/stream', (req, res) => {
     res.flushHeaders();
     scraperSseClients.add(res);
     req.on('close', () => scraperSseClients.delete(res));
+});
+
+// ─── Discovery Routes ───────────────────────────────────────────────────────
+
+// POST /discover — Start discovering companies by search query
+router.post('/discover', async (req, res) => {
+    const { query, maxPages } = req.body;
+    if (!query?.trim()) return res.status(400).json({ error: 'Search query is required' });
+
+    const discoverId = Date.now().toString();
+    const cancelToken = { cancelled: false };
+    const session = {
+        status: 'searching',
+        query: query.trim(),
+        results: [],
+        cancelToken,
+        startTime: Date.now(),
+    };
+    discoverSessions.set(discoverId, session);
+
+    res.json({ discoverId, message: `Searching: "${query.trim()}"` });
+
+    // Run discovery in background
+    (async () => {
+        try {
+            const companies = await discoverCompanies(
+                query.trim(),
+                Math.min(parseInt(maxPages) || 3, 10),
+                (p) => broadcast({ type: 'discover_progress', discoverId, ...p }),
+                cancelToken
+            );
+
+            const s = discoverSessions.get(discoverId);
+            if (s) {
+                s.results = companies;
+                s.status = cancelToken.cancelled ? 'stopped' : 'complete';
+            }
+
+            broadcast({
+                type: 'discover_done',
+                discoverId,
+                status: s?.status || 'complete',
+                results: companies,
+                count: companies.length,
+            });
+        } catch (err) {
+            const s = discoverSessions.get(discoverId);
+            if (s) s.status = 'error';
+            broadcast({ type: 'discover_error', discoverId, error: err.message });
+        }
+    })();
+});
+
+// GET /discover/:id — Get discovery session status
+router.get('/discover/:id', (req, res) => {
+    const s = discoverSessions.get(req.params.id);
+    if (!s) return res.status(404).json({ error: 'Discovery session not found' });
+    res.json({
+        status: s.status,
+        query: s.query,
+        results: s.results,
+        count: s.results.length,
+    });
+});
+
+// POST /discover/:id/stop — Stop a running discovery
+router.post('/discover/:id/stop', (req, res) => {
+    const s = discoverSessions.get(req.params.id);
+    if (!s) return res.status(404).json({ error: 'Not found' });
+    s.cancelToken.cancelled = true;
+    s.status = 'stopped';
+    broadcast({ type: 'discover_stopped', discoverId: req.params.id });
+    res.json({ message: 'Discovery stopped' });
+});
+
+// POST /discover/:id/scrape — Feed discovered URLs into the scraper
+router.post('/discover/:id/scrape', async (req, res) => {
+    const s = discoverSessions.get(req.params.id);
+    if (!s) return res.status(404).json({ error: 'Discovery session not found' });
+    const { concurrency } = req.body;
+
+    const urls = s.results.map(r => r.website).filter(Boolean);
+    if (!urls.length) return res.status(400).json({ error: 'No websites found to scrape' });
+
+    const c = Math.min(Math.max(parseInt(concurrency) || DEFAULT_CONCURRENCY, 1), 8);
+    const sessionId = Date.now().toString();
+
+    const session = {
+        status: 'running',
+        total: urls.length,
+        done: 0,
+        results: [],
+        pendingUrls: urls,
+        startTime: Date.now(),
+        concurrency: c,
+        cancelToken: { cancelled: false },
+    };
+    scrapeSessions.set(sessionId, session);
+
+    res.json({ sessionId, message: `Scraping ${urls.length} discovered websites with ${c} workers` });
+    runSession(sessionId, c);
 });
 
 module.exports = router;
