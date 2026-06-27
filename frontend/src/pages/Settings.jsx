@@ -51,20 +51,38 @@ export default function Settings({ onGmailChange }) {
         try {
             const res = await settingsApi.getAuthUrl()
             setAuthUrl(res.data.url)
-            window.open(res.data.url, '_blank', 'width=500,height=600')
+            const popup = window.open(res.data.url, '_blank', 'width=500,height=600')
 
-            // Poll for connection
+            // Listen for postMessage from the popup for instant detection
+            const onMessage = (event) => {
+                if (event.data === 'gmail_connected') {
+                    window.removeEventListener('message', onMessage)
+                    clearInterval(poll)
+                    setSettings(prev => ({ ...prev, gmailConnected: true }))
+                    if (onGmailChange) onGmailChange(true)
+                    toast.success('✅ Gmail connected successfully!')
+                }
+            }
+            window.addEventListener('message', onMessage)
+
+            // Also poll as a fallback (e.g. if postMessage is blocked)
             const poll = setInterval(() => {
                 settingsApi.getGmailStatus().then(r => {
                     if (r.data.gmailConnected) {
                         clearInterval(poll)
+                        window.removeEventListener('message', onMessage)
                         setSettings(prev => ({ ...prev, gmailConnected: true }))
                         if (onGmailChange) onGmailChange(true)
                         toast.success('✅ Gmail connected successfully!')
                     }
                 })
             }, 3000)
-            setTimeout(() => clearInterval(poll), 120000) // Stop polling after 2min
+
+            // Stop after 2 minutes
+            setTimeout(() => {
+                clearInterval(poll)
+                window.removeEventListener('message', onMessage)
+            }, 120000)
         } catch (e) { toast.error(e.message + ' — Make sure credentials.json is uploaded first.') }
     }
 

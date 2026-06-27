@@ -25,8 +25,11 @@ function getOAuth2Client() {
     const creds = getCredentials();
     if (!creds) throw new Error('credentials.json not found. Please upload it in Settings.');
 
-    const { client_secret, client_id, redirect_uris } = creds.installed || creds.web;
-    return new google.auth.OAuth2(client_id, client_secret, redirect_uris[0] || 'http://localhost:3001/auth/callback');
+    const { client_secret, client_id } = creds.installed || creds.web;
+    // Always use the server's callback URL regardless of what's in credentials.json
+    // Desktop App credentials often have 'urn:ietf:wg:oauth:2.0:oob' which won't work
+    const REDIRECT_URI = 'http://localhost:3001/auth/callback';
+    return new google.auth.OAuth2(client_id, client_secret, REDIRECT_URI);
 }
 
 function getAuthenticatedClient() {
@@ -78,6 +81,11 @@ function getStatus() {
     };
 }
 
+function getToken() {
+    if (!tokenExists()) return null;
+    return JSON.parse(fs.readFileSync(TOKEN_PATH, 'utf8'));
+}
+
 module.exports = {
     getAuthenticatedClient,
     generateAuthUrl,
@@ -86,5 +94,7 @@ module.exports = {
     getStatus,
     credentialsExist,
     tokenExists,
+    getCredentials,
+    getToken,
     CREDENTIALS_PATH,
 };

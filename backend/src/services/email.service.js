@@ -1,35 +1,90 @@
-const nodemailer = require('nodemailer');
 const { google } = require('googleapis');
 const fs = require('fs');
 const path = require('path');
 const { getAuthenticatedClient } = require('./gmail.service');
 const { renderTemplate } = require('../utils/templateRenderer');
+const db = require('../db/database');
 
 /**
- * Creates authenticated Nodemailer transporter using Gmail OAuth2
+ * Reads the sender email from DB settings (fallback to env)
  */
-async function createTransporter() {
-    const auth = getAuthenticatedClient();
-    const { token } = await auth.getAccessToken();
-
-    return nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-            type: 'OAuth2',
-            user: process.env.SENDER_EMAIL,
-            clientId: auth._clientId,
-            clientSecret: auth._clientSecret,
-            refreshToken: auth.credentials.refresh_token,
-            accessToken: token,
-        },
-    });
+async function getSenderEmail() {
+    try {
+        const row = await db('settings').where('key', 'sender_email').first();
+        if (row && row.value) return row.value;
+    } catch { }
+    return process.env.SENDER_EMAIL || '';
 }
 
 /**
- * Sends a single job-application email
+ * Encodes a raw RFC 2822 email string to URL-safe base64 for the Gmail API
+ */
+function encodeEmail(rawEmail) {
+    return Buffer.from(rawEmail)
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+}
+
+/**
+ * Builds a raw RFC 2822 email string with optional attachment
+ */
+function buildRawEmail({ from, to, subject, htmlBody, textBody, attachmentPath }) {
+    const boundary = `boundary_${Date.now()}`;
+    const hasAttachment = attachmentPath && fs.existsSync(attachmentPath);
+
+    let raw = [
+        `From: ${from}`,
+        `To: ${to}`,
+        `Subject: ${subject}`,
+        `MIME-Version: 1.0`,
+        `Content-Type: multipart/mixed; boundary="${boundary}"`,
+        ``,
+        `--${boundary}`,
+        `Content-Type: multipart/alternative; boundary="alt_${boundary}"`,
+        ``,
+        `--alt_${boundary}`,
+        `Content-Type: text/plain; charset="UTF-8"`,
+        ``,
+        textBody || '',
+        ``,
+        `--alt_${boundary}`,
+        `Content-Type: text/html; charset="UTF-8"`,
+        ``,
+        htmlBody || '',
+        ``,
+        `--alt_${boundary}--`,
+    ];
+
+    if (hasAttachment) {
+        const filename = path.basename(attachmentPath);
+        const data = fs.readFileSync(attachmentPath).toString('base64');
+        raw = raw.concat([
+            ``,
+            `--${boundary}`,
+            `Content-Type: application/octet-stream; name="${filename}"`,
+            `Content-Disposition: attachment; filename="${filename}"`,
+            `Content-Transfer-Encoding: base64`,
+            ``,
+            data,
+        ]);
+    }
+
+    raw.push(`--${boundary}--`);
+    return raw.join('\r\n');
+}
+
+/**
+ * Sends a single job-application email using the Gmail REST API directly.
+ * This is more reliable than nodemailer OAuth2 transport for Google OAuth2 flows.
  */
 async function sendEmail({ to, toName, companyName, subject, templateContent, resumePath, campaignVars = {} }) {
-    const transporter = await createTransporter();
+    const auth = getAuthenticatedClient();
+    const gmail = google.gmail({ version: 'v1', auth });
+    const senderEmail = await getSenderEmail();
+
+    if (!senderEmail) throw new Error('Sender email is not configured. Please set it in Settings.');
 
     // Render template
     const vars = {
@@ -37,30 +92,29 @@ async function sendEmail({ to, toName, companyName, subject, templateContent, re
         hr_name: toName || 'Hiring Team',
         ...campaignVars,
     };
-
     const { html, text } = renderTemplate(templateContent, vars);
 
-    // Build attachments
-    const attachments = [];
-    const resolvedResumePath = path.resolve(resumePath || process.env.RESUME_PATH);
-    if (fs.existsSync(resolvedResumePath)) {
-        attachments.push({
-            filename: path.basename(resolvedResumePath),
-            path: resolvedResumePath,
-        });
-    }
+    // Build attachment path
+    const resolvedResumePath = resumePath ? path.resolve(resumePath) : null;
 
-    const mailOptions = {
-        from: `"${campaignVars.applicant_name || 'Suraj Choudhari'}" <${process.env.SENDER_EMAIL}>`,
-        to: toName ? `"${toName}" <${to}>` : to,
-        subject: subject,
-        html,
-        text,
-        attachments,
-    };
+    const fromField = `"${campaignVars.applicant_name || 'Applicant'}" <${senderEmail}>`;
+    const toField = toName ? `"${toName}" <${to}>` : to;
 
-    const result = await transporter.sendMail(mailOptions);
-    return { success: true, messageId: result.messageId };
+    const rawEmail = buildRawEmail({
+        from: fromField,
+        to: toField,
+        subject,
+        htmlBody: html,
+        textBody: text,
+        attachmentPath: resolvedResumePath,
+    });
+
+    const response = await gmail.users.messages.send({
+        userId: 'me',
+        requestBody: { raw: encodeEmail(rawEmail) },
+    });
+
+    return { success: true, messageId: response.data.id };
 }
 
 /**
@@ -94,8 +148,8 @@ async function sendBulkEmails({ contacts, campaign, settings, onProgress }) {
                 resumePath: campaign.resume_path,
                 campaignVars: {
                     position: campaign.position,
-                    applicant_name: settings.applicant_name || 'Suraj Choudhari',
-                    applicant_email: settings.sender_email || process.env.SENDER_EMAIL,
+                    applicant_name: settings.applicant_name || '',
+                    applicant_email: settings.sender_email || '',
                     applicant_phone: settings.applicant_phone || '',
                     applicant_linkedin: settings.applicant_linkedin || '',
                     applicant_github: settings.applicant_github || '',

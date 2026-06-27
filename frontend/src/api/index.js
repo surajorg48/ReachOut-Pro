@@ -41,12 +41,18 @@ export const campaignsApi = {
 
 // Scraper
 export const scraperApi = {
-    run: (urls) => api.post('/scraper/run', { urls }),
+    run: (urls, concurrency) => api.post('/scraper/run', { urls, concurrency }),
+    stop: (sessionId) => api.post('/scraper/stop', { sessionId }),
+    pause: (sessionId) => api.post('/scraper/pause', { sessionId }),
+    resume: (sessionId) => api.post('/scraper/resume', { sessionId }),
     importUrls: (file) => {
         const fd = new FormData(); fd.append('file', file)
         return api.post('/scraper/import', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
     },
     getSession: (id) => api.get(`/scraper/session/${id}`),
+    getSessions: () => api.get('/scraper/sessions'),
+    updateBestEmail: (sessionId, url, bestEmail) => api.patch('/scraper/result', { sessionId, url, bestEmail }),
+    exportExcel: (sessionId) => window.open(`/api/scraper/export/${sessionId}`, '_blank'),
 }
 
 // Email Logs

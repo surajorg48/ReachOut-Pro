@@ -23,10 +23,17 @@ async function initializeDatabase() {
     t.string('email').notNullable();
     t.string('name').defaultTo('');
     t.string('role').defaultTo('');
+    t.string('phone').defaultTo('');
     t.integer('score').defaultTo(50);
     t.string('source_url').defaultTo('');
     t.timestamp('created_at').defaultTo(db.fn.now());
   });
+
+  // Add phone column if it doesn't exist (for existing DBs)
+  const hasPhone = await db.schema.hasColumn('contacts', 'phone');
+  if (!hasPhone) {
+    await db.schema.table('contacts', t => { t.string('phone').defaultTo(''); });
+  }
 
   // Campaigns
   await db.schema.createTableIfNotExists('campaigns', t => {

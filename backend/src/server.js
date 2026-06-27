@@ -28,11 +28,20 @@ app.get('/auth/callback', async (req, res) => {
     if (!code) return res.status(400).send('No code provided');
     try {
         await handleAuthCallback(code);
-        await db('settings').where('key', 'gmail_connected').update({ value: 'true' });
+        // Upsert gmail_connected flag so it works even on first run
+        const existing = await db('settings').where('key', 'gmail_connected').first();
+        if (existing) {
+            await db('settings').where('key', 'gmail_connected').update({ value: 'true' });
+        } else {
+            await db('settings').insert({ key: 'gmail_connected', value: 'true' });
+        }
         res.send(`
       <html><head><style>body{font-family:'Inter',sans-serif;background:#0a0a1b;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column;gap:16px}</style></head>
       <body><div style="font-size:60px">✅</div><h2>Gmail Connected!</h2><p style="color:#888">Closing in 3 seconds...</p>
-      <script>setTimeout(()=>window.close(),3000)</script></body></html>
+      <script>
+        try { window.opener && window.opener.postMessage('gmail_connected', '*'); } catch(e) {}
+        setTimeout(() => window.close(), 3000);
+      </script></body></html>
     `);
     } catch (err) {
         res.status(500).send(`
