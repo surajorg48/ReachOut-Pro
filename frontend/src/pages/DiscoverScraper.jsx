@@ -2,174 +2,225 @@ import { useEffect, useState, useRef } from 'react'
 import toast from 'react-hot-toast'
 import { scraperApi, companiesApi } from '../api'
 
-const EXAMPLE_QUERIES = [
-    'IT companies in Pune',
-    'Software companies in Bangalore',
-    'Tech startups in Mumbai',
-    'IT companies in Hyderabad',
-    'Web development companies in Delhi',
-    'AI companies in India',
-    'SaaS companies in Chennai',
-    'Digital marketing agencies in Pune',
+const KEYWORD_SUGGESTIONS = [
+    'IT companies','Software companies','Tech startups','Web development companies',
+    'AI companies','SaaS companies','Digital marketing agencies','Cloud companies',
+    'Mobile app development','Cybersecurity companies','Data analytics companies',
+    'ERP companies','Fintech companies','Consulting firms','BPO companies',
 ]
 
 export default function DiscoverScraper({ onScrapeUrls }) {
-    const [query, setQuery] = useState('')
-    const [maxPages, setMaxPages] = useState(3)
+    // Location state
+    const [locations, setLocations] = useState([])
+    const [country, setCountry] = useState('')
+    const [state, setState] = useState('')
+    const [city, setCity] = useState('')
+    const [states, setStates] = useState([])
+    const [cities, setCities] = useState([])
+
+    // Keywords state
+    const [keywords, setKeywords] = useState([])
+    const [kwInput, setKwInput] = useState('')
+    const [maxResults, setMaxResults] = useState(30)
+
+    // Discovery state
     const [discoverId, setDiscoverId] = useState(null)
-    const [status, setStatus] = useState(null) // searching, complete, stopped, error
+    const [status, setStatus] = useState(null)
     const [results, setResults] = useState([])
     const [progressMsg, setProgressMsg] = useState('')
     const [searching, setSearching] = useState(false)
     const [selected, setSelected] = useState(new Set())
-    const eventSourceRef = useRef(null)
 
-    // SSE listener for discover events
+    // Load locations on mount
+    useEffect(() => {
+        scraperApi.getLocations().then(r => setLocations(r.data)).catch(() => {})
+    }, [])
+
+    // Update states when country changes
+    useEffect(() => {
+        setState(''); setCity(''); setCities([])
+        const c = locations.find(l => l.name === country)
+        setStates(c?.states || [])
+    }, [country, locations])
+
+    // Update cities when state changes
+    useEffect(() => {
+        setCity('')
+        const s = states.find(st => st.name === state)
+        setCities(s?.cities || [])
+    }, [state, states])
+
+    // SSE listener
     useEffect(() => {
         const es = new EventSource('/api/scraper/stream')
-        eventSourceRef.current = es
-
         es.onmessage = (e) => {
             const data = JSON.parse(e.data)
-
             if (data.type === 'discover_progress') {
                 setProgressMsg(data.message || '')
                 if (data.step === 'found' && data.latest) {
                     setResults(prev => {
-                        if (prev.some(r => r.website === data.latest.website)) return prev
+                        const key = data.latest.domain || data.latest.name
+                        if (prev.some(r => (r.domain || r.name) === key)) return prev
                         const next = [...prev, data.latest]
-                        // Automatically select newly found items
-                        setSelected(new Set(next.map((_, idx) => idx)))
+                        setSelected(new Set(next.map((_, i) => i)))
                         return next
                     })
                 }
             } else if (data.type === 'discover_done') {
                 setSearching(false)
                 setStatus(data.status || 'complete')
-                setResults(data.results || [])
+                if (data.results?.length) {
+                    setResults(data.results)
+                    setSelected(new Set(data.results.map((_, i) => i)))
+                }
                 setProgressMsg('')
-                const s = new Set((data.results || []).map((_, i) => i))
-                setSelected(s)
-                toast.success(`🎯 Found ${data.count} company websites!`)
+                toast.success(`🎯 Found ${data.count} companies!`)
             } else if (data.type === 'discover_stopped') {
-                setSearching(false)
-                setStatus('stopped')
-                setProgressMsg('')
+                setSearching(false); setStatus('stopped'); setProgressMsg('')
                 toast('Discovery stopped')
             } else if (data.type === 'discover_error') {
-                setSearching(false)
-                setStatus('error')
-                setProgressMsg('')
+                setSearching(false); setStatus('error'); setProgressMsg('')
                 toast.error(`Discovery error: ${data.error}`)
             }
         }
-
         return () => es.close()
     }, [])
 
+    // Keyword management
+    const addKeyword = (kw) => {
+        const clean = kw.trim()
+        if (clean && !keywords.includes(clean)) setKeywords(prev => [...prev, clean])
+        setKwInput('')
+    }
+    const removeKeyword = (i) => setKeywords(prev => prev.filter((_, idx) => idx !== i))
+    const handleKwKeyDown = (e) => {
+        if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addKeyword(kwInput) }
+        if (e.key === 'Backspace' && !kwInput && keywords.length) removeKeyword(keywords.length - 1)
+    }
+
+    // Discovery
     const handleDiscover = async () => {
-        if (!query.trim()) return toast.error('Enter a search query')
-        setSearching(true)
-        setResults([])
-        setStatus('searching')
-        setSelected(new Set())
+        if (!keywords.length) return toast.error('Add at least one keyword')
+        if (!country) return toast.error('Select a country')
+        setSearching(true); setResults([]); setStatus('searching'); setSelected(new Set())
         try {
-            const res = await scraperApi.discover(query, maxPages)
+            const res = await scraperApi.discover(keywords, { country, state, city }, maxResults)
             setDiscoverId(res.data.discoverId)
-        } catch (e) {
-            toast.error(e.message)
-            setSearching(false)
-            setStatus('error')
-        }
+        } catch (e) { toast.error(e.message); setSearching(false); setStatus('error') }
     }
+    const handleStop = () => { if (discoverId) scraperApi.stopDiscover(discoverId).catch(() => {}) }
 
-    const handleStop = async () => {
-        if (!discoverId) return
-        await scraperApi.stopDiscover(discoverId).catch(() => {})
-    }
+    // Selection
+    const toggle = (i) => setSelected(p => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n })
+    const toggleAll = () => selected.size === results.length ? setSelected(new Set()) : setSelected(new Set(results.map((_, i) => i)))
 
-    const toggleSelect = (i) => {
-        setSelected(prev => {
-            const next = new Set(prev)
-            next.has(i) ? next.delete(i) : next.add(i)
-            return next
-        })
-    }
-
-    const toggleAll = () => {
-        if (selected.size === results.length) setSelected(new Set())
-        else setSelected(new Set(results.map((_, i) => i)))
-    }
-
-    const handleScrapeSelected = () => {
-        const urls = results.filter((_, i) => selected.has(i)).map(r => r.website)
-        if (!urls.length) return toast.error('Select at least one company')
+    // Actions
+    const handleScrape = () => {
+        const urls = results.filter((_, i) => selected.has(i)).map(r => r.website).filter(Boolean)
+        if (!urls.length) return toast.error('No websites in selection to scrape')
         if (onScrapeUrls) onScrapeUrls(urls)
     }
-
-    const handleScrapeAll = () => {
-        const urls = results.map(r => r.website)
-        if (!urls.length) return toast.error('No companies found')
-        if (onScrapeUrls) onScrapeUrls(urls)
-    }
-
-    // Save to outreach Database
-    const handleSaveSelectedToDb = async () => {
-        const companiesToSave = results.filter((_, i) => selected.has(i)).map(r => ({
-            name: r.name,
-            website: r.website,
-            industry: 'IT',
-            city: ''
+    const handleSaveToDb = async () => {
+        const list = results.filter((_, i) => selected.has(i)).map(r => ({
+            name: r.name, website: r.website || '', industry: r.category || 'IT', city: city || state || ''
         }))
-        if (!companiesToSave.length) return toast.error('Select at least one company to save')
-        
+        if (!list.length) return toast.error('Select at least one company')
         try {
-            const res = await companiesApi.bulkAdd(companiesToSave)
-            toast.success(`💾 Saved ${res.data.added} companies directly to database!`)
-        } catch (e) {
-            toast.error(e.message)
-        }
+            const res = await companiesApi.bulkAdd(list)
+            toast.success(`💾 ${res.data.added} companies saved to database!`)
+        } catch (e) { toast.error(e.message) }
     }
+
+    const withWebsite = results.filter(r => r.website)
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            {/* Search Input */}
+            {/* Search Config Card */}
             <div className="card">
                 <div className="card-header">
-                    <div className="card-title">🌐 Search & Discover Companies</div>
+                    <div className="card-title">🌐 Discover Companies from Google Maps</div>
                 </div>
 
-                <div className="form-group" style={{ marginBottom: 12 }}>
-                    <label className="form-label">Search Query</label>
-                    <input
-                        className="input"
-                        value={query}
-                        onChange={e => setQuery(e.target.value)}
-                        placeholder="e.g. IT companies in Pune, Software startups in Bangalore..."
-                        onKeyDown={e => e.key === 'Enter' && !searching && handleDiscover()}
-                        disabled={searching}
-                        style={{ fontSize: '1rem' }}
-                    />
-                </div>
-
-                <div className="form-group" style={{ marginBottom: 12 }}>
-                    <label className="form-label">Google Pages to Scan: <strong style={{ color: 'var(--accent-primary)' }}>{maxPages}</strong> (~{maxPages * 10} results)</label>
-                    <input type="range" min="1" max="10" value={maxPages}
-                        onChange={e => setMaxPages(parseInt(e.target.value))}
-                        style={{ width: '100%', accentColor: 'var(--accent-primary)' }} />
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                        <span>1 page (~10)</span><span>10 pages (~100)</span>
+                {/* Location Dropdowns */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+                    <div className="form-group">
+                        <label className="form-label">🌍 Country *</label>
+                        <select className="select" value={country} onChange={e => setCountry(e.target.value)} disabled={searching}>
+                            <option value="">Select country</option>
+                            {locations.map(l => <option key={l.code} value={l.name}>{l.name}</option>)}
+                        </select>
+                    </div>
+                    <div className="form-group">
+                        <label className="form-label">📍 State / Region</label>
+                        <select className="select" value={state} onChange={e => setState(e.target.value)} disabled={!states.length || searching}>
+                            <option value="">All states</option>
+                            {states.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                        </select>
+                    </div>
+                    <div className="form-group">
+                        <label className="form-label">🏙️ City</label>
+                        <select className="select" value={city} onChange={e => setCity(e.target.value)} disabled={!cities.length || searching}>
+                            <option value="">All cities</option>
+                            {cities.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
                     </div>
                 </div>
 
-                {/* Quick queries */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                    {EXAMPLE_QUERIES.map(q => (
-                        <button key={q} className="btn btn-ghost btn-sm" style={{ fontSize: '0.72rem' }}
-                            onClick={() => setQuery(q)} disabled={searching}>
-                            {q}
+                {/* Keywords Input */}
+                <div className="form-group" style={{ marginBottom: 12 }}>
+                    <label className="form-label">🏷️ Industry Keywords *</label>
+                    <div style={{
+                        display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 12px',
+                        background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                        minHeight: 44, alignItems: 'center',
+                    }}>
+                        {keywords.map((kw, i) => (
+                            <span key={i} style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                padding: '4px 10px', borderRadius: 20, fontSize: '0.78rem', fontWeight: 600,
+                                background: 'rgba(99,102,241,0.15)', color: 'var(--accent-primary)',
+                                border: '1px solid rgba(99,102,241,0.3)',
+                            }}>
+                                {kw}
+                                <span onClick={() => removeKeyword(i)} style={{ cursor: 'pointer', marginLeft: 2, opacity: 0.7 }}>✕</span>
+                            </span>
+                        ))}
+                        <input
+                            value={kwInput} onChange={e => setKwInput(e.target.value)}
+                            onKeyDown={handleKwKeyDown}
+                            placeholder={keywords.length ? 'Add more...' : 'Type keyword and press Enter (e.g. IT companies)'}
+                            disabled={searching}
+                            style={{
+                                flex: 1, minWidth: 180, background: 'none', border: 'none', outline: 'none',
+                                color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'inherit',
+                            }}
+                        />
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                        Press Enter or comma to add. Each keyword runs a separate Maps search.
+                    </div>
+                </div>
+
+                {/* Keyword Suggestions */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 12 }}>
+                    {KEYWORD_SUGGESTIONS.filter(s => !keywords.includes(s)).slice(0, 12).map(s => (
+                        <button key={s} className="btn btn-ghost btn-sm" style={{ fontSize: '0.7rem', padding: '4px 10px' }}
+                            onClick={() => addKeyword(s)} disabled={searching}>
+                            + {s}
                         </button>
                     ))}
+                </div>
+
+                {/* Max Results */}
+                <div className="form-group" style={{ marginBottom: 14 }}>
+                    <label className="form-label">Max Results: <strong style={{ color: 'var(--accent-primary)' }}>{maxResults}</strong></label>
+                    <input type="range" min="10" max="100" step="10" value={maxResults}
+                        onChange={e => setMaxResults(parseInt(e.target.value))}
+                        disabled={searching}
+                        style={{ width: '100%', accentColor: 'var(--accent-primary)' }} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                        <span>10 (fast)</span><span>100 (thorough)</span>
+                    </div>
                 </div>
 
                 {/* Progress */}
@@ -177,21 +228,18 @@ export default function DiscoverScraper({ onScrapeUrls }) {
                     <div className="alert alert-info" style={{ marginBottom: 12 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
-                            <span>{progressMsg || 'Searching Google...'}</span>
+                            <span>{progressMsg || 'Searching Google Maps...'}</span>
                         </div>
                     </div>
                 )}
 
+                {/* Action Buttons */}
                 <div style={{ display: 'flex', gap: 8 }}>
                     <button className="btn btn-primary btn-lg" style={{ flex: 1 }}
-                        onClick={handleDiscover} disabled={searching || !query.trim()}>
-                        {searching ? <>
-                            <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> Discovering...
-                        </> : '🔍 Discover Companies'}
+                        onClick={handleDiscover} disabled={searching || !keywords.length || !country}>
+                        {searching ? <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> Discovering...</> : '🔍 Discover Companies'}
                     </button>
-                    {searching && (
-                        <button className="btn btn-danger" onClick={handleStop}>🛑 Stop</button>
-                    )}
+                    {searching && <button className="btn btn-danger" onClick={handleStop}>🛑 Stop</button>}
                 </div>
             </div>
 
@@ -200,59 +248,66 @@ export default function DiscoverScraper({ onScrapeUrls }) {
                 <div className="card">
                     <div className="card-header">
                         <div className="card-title">
-                            🏢 Discovered {results.length} Companies
-                            {status === 'complete' && <span style={{ marginLeft: 8, fontSize: '0.75rem', color: 'var(--accent-success)', fontWeight: 400 }}>✅ Complete</span>}
-                            {searching && <span style={{ marginLeft: 8, fontSize: '0.75rem', color: 'var(--accent-info)', fontWeight: 400 }} className="animate-pulse">⏳ Discovering live...</span>}
+                            🏢 {results.length} Companies Found
+                            {withWebsite.length < results.length && <span style={{ marginLeft: 6, fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 400 }}>({withWebsite.length} with websites)</span>}
+                            {status === 'complete' && <span style={{ marginLeft: 8, fontSize: '0.75rem', color: 'var(--accent-success)', fontWeight: 400 }}>✅</span>}
+                            {searching && <span style={{ marginLeft: 8, fontSize: '0.75rem', color: 'var(--accent-info)', fontWeight: 400 }} className="animate-pulse">⏳ Live...</span>}
                         </div>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                             <button className="btn btn-ghost btn-sm" onClick={toggleAll}>
-                                {selected.size === results.length ? '☐ Deselect All' : '☑ Select All'}
+                                {selected.size === results.length ? '☐ Deselect' : '☑ Select All'}
                             </button>
-                            <button className="btn btn-success btn-sm" onClick={handleSaveSelectedToDb}
-                                disabled={selected.size === 0}>
-                                💾 Save Selected to DB ({selected.size})
+                            <button className="btn btn-success btn-sm" onClick={handleSaveToDb} disabled={!selected.size}>
+                                💾 Save to DB ({selected.size})
                             </button>
-                            <button className="btn btn-primary btn-sm" onClick={handleScrapeSelected}
-                                disabled={selected.size === 0 || searching}>
-                                🚀 Scrape Selected ({selected.size})
-                            </button>
-                            <button className="btn btn-ghost btn-sm" onClick={handleScrapeAll} disabled={searching}>
-                                🚀 Scrape All ({results.length})
+                            <button className="btn btn-primary btn-sm" onClick={handleScrape} disabled={!selected.size || searching}>
+                                🚀 Scrape Emails ({results.filter((r, i) => selected.has(i) && r.website).length})
                             </button>
                         </div>
                     </div>
-
                     <div className="table-wrapper">
                         <table>
                             <thead>
                                 <tr>
-                                    <th style={{ width: 40 }}>☑</th>
-                                    <th>Company Details</th>
+                                    <th style={{ width: 36 }}>☑</th>
+                                    <th>Company</th>
                                     <th>Website</th>
+                                    <th>Phone</th>
+                                    <th>Address</th>
+                                    <th>Source</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {results.map((r, i) => (
-                                    <tr key={i} onClick={() => toggleSelect(i)} style={{ cursor: 'pointer', animation: 'fadeIn 0.3s ease' }}>
+                                    <tr key={i} onClick={() => toggle(i)} style={{ cursor: 'pointer', animation: 'fadeIn 0.3s ease' }}>
                                         <td>
-                                            <input type="checkbox" checked={selected.has(i)}
-                                                onChange={() => toggleSelect(i)}
-                                                onClick={e => e.stopPropagation()}
-                                                style={{ accentColor: 'var(--accent-primary)' }} />
+                                            <input type="checkbox" checked={selected.has(i)} onChange={() => toggle(i)}
+                                                onClick={e => e.stopPropagation()} style={{ accentColor: 'var(--accent-primary)' }} />
                                         </td>
                                         <td>
                                             <div className="bold">{r.name}</div>
-                                            {r.snippet && (
-                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4, fontStyle: 'italic', maxWidth: 600 }}>
-                                                    {r.snippet}
-                                                </div>
-                                            )}
+                                            {r.category && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{r.category}</div>}
+                                            {r.rating && <div style={{ fontSize: '0.68rem', color: 'var(--accent-warning)' }}>⭐ {r.rating}</div>}
                                         </td>
-                                        <td className="mono" style={{ fontSize: '0.78rem', color: 'var(--accent-info)' }}>
-                                            <a href={r.website} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
-                                                style={{ color: 'var(--accent-info)' }}>
-                                                {r.website?.replace('https://', '').replace('http://', '')}
-                                            </a>
+                                        <td className="mono" style={{ fontSize: '0.76rem' }}>
+                                            {r.website ? (
+                                                <a href={r.website} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+                                                    style={{ color: 'var(--accent-info)' }}>
+                                                    {r.domain || r.website.replace(/https?:\/\//, '')}
+                                                </a>
+                                            ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>No website</span>}
+                                        </td>
+                                        <td className="mono" style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
+                                            {r.phone || <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                                        </td>
+                                        <td style={{ fontSize: '0.72rem', color: 'var(--text-muted)', maxWidth: 200 }}>
+                                            {r.address || '—'}
+                                        </td>
+                                        <td>
+                                            <span className={`badge ${r.source?.includes('Maps') ? 'badge-sent' : 'badge-contacted'}`}
+                                                style={{ fontSize: '0.65rem' }}>
+                                                {r.source || 'Web'}
+                                            </span>
                                         </td>
                                     </tr>
                                 ))}
@@ -260,7 +315,7 @@ export default function DiscoverScraper({ onScrapeUrls }) {
                         </table>
                     </div>
                     <div className="alert alert-info" style={{ marginTop: 12 }}>
-                        💡 Select the companies you want, then click "Scrape Selected" to find HR emails & phone numbers from their websites. Or click "Save Selected to DB" to store them in your companies outreach table directly.
+                        💡 <strong>Save to DB</strong> adds companies to your outreach list. <strong>Scrape Emails</strong> visits their websites to find HR contacts.
                     </div>
                 </div>
             )}

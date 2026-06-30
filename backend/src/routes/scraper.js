@@ -6,6 +6,7 @@ const fs = require('fs');
 const db = require('../db/database');
 const { scrapeCompany } = require('../services/scraper.service');
 const { discoverCompanies } = require('../services/discover.service');
+const locations = require('../data/locations');
 const XLSX = require('xlsx');
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -312,37 +313,64 @@ router.get('/stream', (req, res) => {
 
 // ─── Discovery Routes ───────────────────────────────────────────────────────
 
-// POST /discover — Start discovering companies by search query
+// GET /locations — Return location hierarchy for dropdowns
+router.get('/locations', (req, res) => {
+    res.json(locations);
+});
+
+// POST /discover — Start discovering companies by keywords + location
 router.post('/discover', async (req, res) => {
-    const { query, maxPages } = req.body;
-    if (!query?.trim()) return res.status(400).json({ error: 'Search query is required' });
+    const { keywords, location, maxResults } = req.body;
+    // keywords: string[] e.g. ['IT companies', 'Software companies']
+    // location: { country, state, city }
+    const kwList = (keywords || []).filter(k => k.trim());
+    if (!kwList.length) return res.status(400).json({ error: 'At least one keyword is required' });
+
+    // Build location string
+    const locParts = [];
+    if (location?.city) locParts.push(location.city);
+    if (location?.state) locParts.push(location.state);
+    if (location?.country) locParts.push(location.country);
+    const locStr = locParts.join(', ');
+    if (!locStr) return res.status(400).json({ error: 'Select at least a country' });
 
     const discoverId = Date.now().toString();
     const cancelToken = { cancelled: false };
+    const fullQueries = kwList.map(k => `${k.trim()} in ${locStr}`);
     const session = {
         status: 'searching',
-        query: query.trim(),
+        query: fullQueries.join(' | '),
         results: [],
         cancelToken,
         startTime: Date.now(),
     };
     discoverSessions.set(discoverId, session);
 
-    res.json({ discoverId, message: `Searching: "${query.trim()}"` });
+    res.json({ discoverId, message: `Discovering: ${fullQueries.join(', ')}` });
 
-    // Run discovery in background
+    // Run discovery in background — search each keyword
     (async () => {
+        const allResults = [];
+        const seen = new Set();
         try {
-            const companies = await discoverCompanies(
-                query.trim(),
-                Math.min(parseInt(maxPages) || 3, 10),
-                (p) => broadcast({ type: 'discover_progress', discoverId, ...p }),
-                cancelToken
-            );
+            for (const q of fullQueries) {
+                if (cancelToken.cancelled) break;
+                broadcast({ type: 'discover_progress', discoverId, step: 'searching', message: `Searching: "${q}"...` });
+                const companies = await discoverCompanies(
+                    q,
+                    Math.min(parseInt(maxResults) || 30, 100),
+                    (p) => broadcast({ type: 'discover_progress', discoverId, ...p }),
+                    cancelToken
+                );
+                for (const c of companies) {
+                    const key = c.domain || c.name;
+                    if (!seen.has(key)) { seen.add(key); allResults.push(c); }
+                }
+            }
 
             const s = discoverSessions.get(discoverId);
             if (s) {
-                s.results = companies;
+                s.results = allResults;
                 s.status = cancelToken.cancelled ? 'stopped' : 'complete';
             }
 
@@ -350,8 +378,8 @@ router.post('/discover', async (req, res) => {
                 type: 'discover_done',
                 discoverId,
                 status: s?.status || 'complete',
-                results: companies,
-                count: companies.length,
+                results: allResults,
+                count: allResults.length,
             });
         } catch (err) {
             const s = discoverSessions.get(discoverId);

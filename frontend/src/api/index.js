@@ -55,7 +55,8 @@ export const scraperApi = {
     updateBestEmail: (sessionId, url, bestEmail) => api.patch('/scraper/result', { sessionId, url, bestEmail }),
     exportExcel: (sessionId) => window.open(`/api/scraper/export/${sessionId}`, '_blank'),
     // Discovery
-    discover: (query, maxPages) => api.post('/scraper/discover', { query, maxPages }),
+    getLocations: () => api.get('/scraper/locations'),
+    discover: (keywords, location, maxResults) => api.post('/scraper/discover', { keywords, location, maxResults }),
     getDiscoverSession: (id) => api.get(`/scraper/discover/${id}`),
     stopDiscover: (id) => api.post(`/scraper/discover/${id}/stop`),
     scrapeDiscovered: (discoverId, concurrency) => api.post(`/scraper/discover/${discoverId}/scrape`, { concurrency }),
