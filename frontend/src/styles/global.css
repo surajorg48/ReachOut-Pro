@@ -343,7 +343,8 @@ a { color: var(--accent-primary); text-decoration: none; }
 
 .input { padding: 10px 14px; }
 .textarea { padding: 12px 14px; resize: vertical; min-height: 80px; }
-.select { padding: 10px 14px; cursor: pointer; }
+.select { padding: 10px 14px; cursor: pointer; background-color: #0e0e28; }
+.select option { background-color: #0e0e28; color: #f0f0ff; padding: 8px 12px; }
 
 .input:focus, .textarea:focus, .select:focus {
   border-color: var(--accent-primary);

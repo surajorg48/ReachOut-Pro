@@ -7,7 +7,11 @@ const db = require('../db/database');
 const { scrapeCompany } = require('../services/scraper.service');
 const { discoverCompanies } = require('../services/discover.service');
 const locations = require('../data/locations');
+const axios = require('axios');
 const XLSX = require('xlsx');
+
+// Cache for CountriesNow API
+const locCache = {};
 const upload = multer({ storage: multer.memoryStorage() });
 
 // ─── In-memory session store (survives tab switches, not server restarts) ───
@@ -313,30 +317,68 @@ router.get('/stream', (req, res) => {
 
 // ─── Discovery Routes ───────────────────────────────────────────────────────
 
-// GET /locations — Return location hierarchy for dropdowns
-router.get('/locations', (req, res) => {
-    res.json(locations);
+// GET /locations/countries — All world countries via CountriesNow API
+router.get('/locations/countries', async (req, res) => {
+    if (locCache.countries) return res.json(locCache.countries);
+    try {
+        const r = await axios.get('https://countriesnow.space/api/v0.1/countries/positions', { timeout: 10000 });
+        const list = r.data.data.map(c => c.name).sort();
+        locCache.countries = list;
+        res.json(list);
+    } catch {
+        const fallback = locations.map(l => l.name);
+        res.json(fallback);
+    }
 });
 
-// POST /discover — Start discovering companies by keywords + location
+// GET /locations/states?country=India — States for a country
+router.get('/locations/states', async (req, res) => {
+    const { country } = req.query;
+    if (!country) return res.json([]);
+    const key = `states_${country}`;
+    if (locCache[key]) return res.json(locCache[key]);
+    try {
+        const r = await axios.post('https://countriesnow.space/api/v0.1/countries/states', { country }, { timeout: 10000 });
+        const list = (r.data.data?.states || []).map(s => s.name).sort();
+        locCache[key] = list;
+        res.json(list);
+    } catch {
+        const fb = locations.find(l => l.name === country);
+        res.json(fb ? fb.states.map(s => s.name) : []);
+    }
+});
+
+// GET /locations/cities?country=India&state=Maharashtra — Cities for a state
+router.get('/locations/cities', async (req, res) => {
+    const { country, state } = req.query;
+    if (!country || !state) return res.json([]);
+    const key = `cities_${country}_${state}`;
+    if (locCache[key]) return res.json(locCache[key]);
+    try {
+        const r = await axios.post('https://countriesnow.space/api/v0.1/countries/state/cities', { country, state }, { timeout: 10000 });
+        const list = (r.data.data || []).sort();
+        locCache[key] = list;
+        res.json(list);
+    } catch {
+        const fb = locations.find(l => l.name === country);
+        const st = fb?.states?.find(s => s.name === state);
+        res.json(st?.cities || []);
+    }
+});
+
+// POST /discover — Start discovering companies by keywords + location string
 router.post('/discover', async (req, res) => {
     const { keywords, location, maxResults } = req.body;
     // keywords: string[] e.g. ['IT companies', 'Software companies']
-    // location: { country, state, city }
+    // location: string e.g. 'Pune' or 'Pune, Maharashtra, India' or '' for global
     const kwList = (keywords || []).filter(k => k.trim());
     if (!kwList.length) return res.status(400).json({ error: 'At least one keyword is required' });
 
-    // Build location string
-    const locParts = [];
-    if (location?.city) locParts.push(location.city);
-    if (location?.state) locParts.push(location.state);
-    if (location?.country) locParts.push(location.country);
-    const locStr = locParts.join(', ');
-    if (!locStr) return res.status(400).json({ error: 'Select at least a country' });
+    const locStr = (location || '').trim();
+    const fullQueries = kwList.map(k => locStr ? `${k.trim()} in ${locStr}` : k.trim());
 
     const discoverId = Date.now().toString();
     const cancelToken = { cancelled: false };
-    const fullQueries = kwList.map(k => `${k.trim()} in ${locStr}`);
     const session = {
         status: 'searching',
         query: fullQueries.join(' | '),

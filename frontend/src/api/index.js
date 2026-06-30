@@ -55,7 +55,9 @@ export const scraperApi = {
     updateBestEmail: (sessionId, url, bestEmail) => api.patch('/scraper/result', { sessionId, url, bestEmail }),
     exportExcel: (sessionId) => window.open(`/api/scraper/export/${sessionId}`, '_blank'),
     // Discovery
-    getLocations: () => api.get('/scraper/locations'),
+    getCountries: () => api.get('/scraper/locations/countries'),
+    getStates: (country) => api.get('/scraper/locations/states', { params: { country } }),
+    getCities: (country, state) => api.get('/scraper/locations/cities', { params: { country, state } }),
     discover: (keywords, location, maxResults) => api.post('/scraper/discover', { keywords, location, maxResults }),
     getDiscoverSession: (id) => api.get(`/scraper/discover/${id}`),
     stopDiscover: (id) => api.post(`/scraper/discover/${id}/stop`),
