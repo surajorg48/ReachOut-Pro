@@ -4,9 +4,9 @@ const db = require('../db/database');
 function buildOAuth2(credsObj) {
     if (!credsObj) throw new Error('Credentials missing.');
     const { client_secret, client_id } = credsObj.installed || credsObj.web;
-    // We should ideally use dynamic URL, but local testing is 3001
-    // The redirect URI must match exactly what's in the credentials.json
-    const REDIRECT_URI = 'http://localhost:3001/auth/callback';
+    const REDIRECT_URI = process.env.BACKEND_URL 
+        ? `${process.env.BACKEND_URL}/auth/callback` 
+        : 'http://localhost:3001/auth/callback';
     return new google.auth.OAuth2(client_id, client_secret, REDIRECT_URI);
 }
 

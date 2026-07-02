@@ -18,7 +18,7 @@ router.get('/', async (req, res) => {
     try {
         const rows = await db('settings').select('key', 'value');
         const settings = rows.reduce((acc, r) => { acc[r.key] = r.value; return acc; }, {});
-        const gmailStatus = getStatus();
+        const gmailStatus = await getStatus();
         const accounts = await getAllAccounts();
         const active = await getActiveAccount();
         

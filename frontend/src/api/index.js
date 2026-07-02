@@ -1,6 +1,8 @@
 import axios from 'axios'
 
-const api = axios.create({ baseURL: '/api', timeout: 30000 })
+const BACKEND_URL = import.meta.env.VITE_API_URL || '';
+const api = axios.create({ baseURL: BACKEND_URL ? `${BACKEND_URL}/api` : '/api', timeout: 30000 })
+const getDownloadUrl = (path) => BACKEND_URL ? `${BACKEND_URL}${path}` : path;
 
 api.interceptors.response.use(r => r, err => {
     const msg = err.response?.data?.error || err.message || 'Request failed'
@@ -24,8 +26,8 @@ export const companiesApi = {
         const fd = new FormData(); fd.append('file', file)
         return api.post('/companies/import-excel', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
     },
-    exportExcel: () => window.open('/api/companies/export-excel', '_blank'),
-    downloadTemplate: () => window.open('/api/companies/template-excel', '_blank'),
+    exportExcel: () => window.open(getDownloadUrl('/api/companies/export-excel'), '_blank'),
+    downloadTemplate: () => window.open(getDownloadUrl('/api/companies/template-excel'), '_blank'),
     getStats: () => api.get('/companies/stats/summary'),
 }
 
@@ -54,7 +56,7 @@ export const scraperApi = {
     getSession: (id) => api.get(`/scraper/session/${id}`),
     getSessions: () => api.get('/scraper/sessions'),
     updateBestEmail: (sessionId, url, bestEmail) => api.patch('/scraper/result', { sessionId, url, bestEmail }),
-    exportExcel: (sessionId) => window.open(`/api/scraper/export/${sessionId}`, '_blank'),
+    exportExcel: (sessionId) => window.open(getDownloadUrl(`/api/scraper/export/${sessionId}`), '_blank'),
     // Discovery
     getCountries: () => api.get('/scraper/locations/countries'),
     getStates: (country) => api.get('/scraper/locations/states', { params: { country } }),
@@ -75,7 +77,7 @@ export const logsApi = {
     getStats: () => api.get('/logs/stats'),
     retry: (id) => api.post(`/logs/${id}/retry`),
     delete: (id) => api.delete(`/logs/${id}`),
-    exportExcel: () => window.open('/api/logs/export', '_blank'),
+    exportExcel: () => window.open(getDownloadUrl('/api/logs/export'), '_blank'),
 }
 
 // Settings
