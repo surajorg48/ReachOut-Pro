@@ -363,21 +363,7 @@ export default function Settings({ onGmailChange }) {
                                 <button className="btn btn-primary" onClick={() => setShowAddForm(true)}>
                                     ➕ Add Gmail Account
                                 </button>
-                                {/* Legacy flow kept for backward compat */}
-                                {!settings.gmailConnected && accounts.length === 0 && (
-                                    <>
-                                        <button className="btn btn-ghost" onClick={() => credRef.current.click()} style={{ gap: 6 }}>
-                                            <DownloadIcon size={13} /> {settings.credentialsUploaded ? 'credentials.json uploaded' : 'Upload credentials.json'}
-                                        </button>
-                                        <input ref={credRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleUploadCreds} />
-                                        <button className="btn btn-primary" onClick={handleConnectGmail} disabled={!settings.credentialsUploaded} style={{ gap: 6 }}>
-                                            <LinkIcon size={14} /> Quick Connect
-                                        </button>
-                                    </>
-                                )}
-                                {settings.gmailConnected && (
-                                    <button className="btn btn-danger" onClick={handleDisconnect} style={{ gap: 6 }}><DisconnectIcon size={14} /> Disconnect</button>
-                                )}
+                                {/* Only use multi-account flow */}
                             </div>
                         )}
                     </div>

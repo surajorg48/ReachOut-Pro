@@ -16,7 +16,9 @@ router.get('/stats/summary', async (req, res) => {
         const [{ contacted }] = await db('companies').where('status', 'contacted').count('id as contacted');
         const [{ notInterested }] = await db('companies').where('status', 'not_interested').count('id as notInterested');
         const [{ totalEmails }] = await db('contacts').count('id as totalEmails');
-        const [{ sentToday }] = await db('email_logs').where('status', 'sent').whereRaw("DATE(sent_at) = DATE('now')").count('id as sentToday');
+        const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+        const todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
+        const [{ sentToday }] = await db('email_logs').where('status', 'sent').whereBetween('sent_at', [todayStart, todayEnd]).count('id as sentToday');
         const [{ totalSent }] = await db('email_logs').where('status', 'sent').count('id as totalSent');
         const [{ totalFailed }] = await db('email_logs').where('status', 'failed').count('id as totalFailed');
         res.json({ total, pending, contacted, notInterested, totalEmails, sentToday, totalSent, totalFailed });
@@ -177,16 +179,31 @@ router.get('/', async (req, res) => {
             db.raw(`(SELECT name FROM contacts WHERE company_id = c.id ORDER BY score DESC LIMIT 1) as hr_name`),
             db.raw(`(SELECT phone FROM contacts WHERE company_id = c.id ORDER BY score DESC LIMIT 1) as hr_phone`),
             db.raw(`(SELECT score FROM contacts WHERE company_id = c.id ORDER BY score DESC LIMIT 1) as email_score`),
-            db.raw(`(SELECT COUNT(*) FROM contacts WHERE company_id = c.id) as email_count`),
-            db.raw(`(SELECT json_group_array(json_object('id', id, 'email', email, 'name', name, 'phone', phone, 'score', score)) FROM (SELECT * FROM contacts WHERE company_id = c.id ORDER BY score DESC)) as contacts_json`)
+            db.raw(`(SELECT COUNT(*) FROM contacts WHERE company_id = c.id) as email_count`)
         ).orderBy('c.created_at', 'desc').limit(parseInt(limit));
 
         if (search) query = query.where(b => b.whereLike('c.name', `%${search}%`).orWhereLike('c.website', `%${search}%`));
         if (status) query = query.where('c.status', status);
 
         const companies = await query;
-        const total = companies.length;
-        res.json({ companies, total });
+        
+        // Fetch all contacts for these companies and group them
+        const companyIds = companies.map(c => c.id);
+        const contactsMap = {};
+        if (companyIds.length > 0) {
+            const contacts = await db('contacts').whereIn('company_id', companyIds).orderBy('score', 'desc');
+            for (const ct of contacts) {
+                if (!contactsMap[ct.company_id]) contactsMap[ct.company_id] = [];
+                contactsMap[ct.company_id].push(ct);
+            }
+        }
+
+        const companiesWithContacts = companies.map(c => ({
+            ...c,
+            contacts_json: JSON.stringify(contactsMap[c.id] || [])
+        }));
+
+        res.json({ companies: companiesWithContacts, total: companiesWithContacts.length });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
