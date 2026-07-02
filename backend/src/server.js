@@ -9,7 +9,11 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:3000'], credentials: true }));
+const allowedOrigins = ['http://localhost:5173', 'http://localhost:3000', 'https://reachout-pro.vercel.app'];
+if (process.env.FRONTEND_URL) {
+    allowedOrigins.push(process.env.FRONTEND_URL);
+}
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -50,7 +54,6 @@ app.get('/auth/callback', async (req, res) => {
         const existing = await db('settings').where('key', 'gmail_connected').first();
         if (existing) await db('settings').where('key', 'gmail_connected').update({ value: 'true' });
         else await db('settings').insert({ key: 'gmail_connected', value: 'true' });
-        fs.appendFileSync(logPath, `Connected successfully.\n`);
 
         res.send(`
       <html><head><style>body{font-family:'Inter',sans-serif;background:#0a0a1b;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column;gap:16px}</style></head>
