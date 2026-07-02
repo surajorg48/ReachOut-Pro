@@ -92,13 +92,14 @@ async function addAccount(email, label, credFileOrObj) {
         credsStr = JSON.stringify(credFileOrObj);
     }
 
-    const [id] = await db('gmail_accounts').insert({
+    const result = await db('gmail_accounts').insert({
         email,
         label: label || email,
         credentials_json: credsStr,
         token_json: '',
         is_active: false,
-    });
+    }).returning('id');
+    const id = result[0]?.id || result[0];
     return { id, email, label };
 }
 

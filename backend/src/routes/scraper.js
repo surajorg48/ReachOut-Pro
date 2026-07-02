@@ -42,8 +42,8 @@ async function saveToDb(url, companyName, emails, phones) {
     let company = await db('companies').whereLike('website', `%${domainKey}%`).first();
     let companyId;
     if (!company) {
-        const [id] = await db('companies').insert({ name: companyName, website: url, industry: 'IT' });
-        companyId = id;
+        const result = await db('companies').insert({ name: companyName, website: url, industry: 'IT' }).returning('id');
+        companyId = result[0]?.id || result[0];
     } else {
         companyId = company.id;
     }

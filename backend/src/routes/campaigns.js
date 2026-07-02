@@ -38,7 +38,8 @@ router.post('/', async (req, res) => {
         const { name, subject, template_content, position, resume_path } = req.body;
         if (!name || !subject) return res.status(400).json({ error: 'Name and subject required' });
         const defaultResume = process.env.RESUME_PATH || '../Suraj_Choudhari_Resume.pdf';
-        const [id] = await db('campaigns').insert({ name, subject, template_content: template_content || '', position: position || 'Software Developer', resume_path: resume_path || defaultResume });
+        const result = await db('campaigns').insert({ name, subject, template_content: template_content || '', position: position || 'Software Developer', resume_path: resume_path || defaultResume }).returning('id');
+        const id = result[0]?.id || result[0];
         res.json({ id, message: 'Campaign created' });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });

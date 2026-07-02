@@ -22,7 +22,9 @@ router.get('/stats', async (req, res) => {
         const [{ sent }] = await db('email_logs').where('status', 'sent').count('id as sent');
         const [{ failed }] = await db('email_logs').where('status', 'failed').count('id as failed');
         const [{ pending }] = await db('email_logs').where('status', 'pending').count('id as pending');
-        const [{ today }] = await db('email_logs').where('status', 'sent').whereRaw("DATE(sent_at) = DATE('now')").count('id as today');
+        const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+        const todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
+        const [{ today }] = await db('email_logs').where('status', 'sent').whereBetween('sent_at', [todayStart, todayEnd]).count('id as today');
         res.json({ sent, failed, pending, today });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });

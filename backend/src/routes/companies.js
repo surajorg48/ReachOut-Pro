@@ -151,8 +151,8 @@ router.post('/import-excel', upload.single('file'), async (req, res) => {
                 let company = await db('companies').where('name', companyName).first();
                 let companyId;
                 if (!company) {
-                    const [id] = await db('companies').insert({ name: companyName, website, industry, city });
-                    companyId = id;
+                    const result = await db('companies').insert({ name: companyName, website, industry, city }).returning('id');
+                    companyId = result[0]?.id || result[0];
                 } else {
                     companyId = company.id;
                 }
@@ -212,7 +212,8 @@ router.post('/', async (req, res) => {
     try {
         const { name, website, industry, city, notes, email, hr_name, role } = req.body;
         if (!name) return res.status(400).json({ error: 'Company name is required' });
-        const [id] = await db('companies').insert({ name, website: website || '', industry: industry || 'IT', city: city || '', notes: notes || '' });
+        const result = await db('companies').insert({ name, website: website || '', industry: industry || 'IT', city: city || '', notes: notes || '' }).returning('id');
+        const id = result[0]?.id || result[0];
         if (email) {
             await db('contacts').insert({ company_id: id, email: email.toLowerCase().trim(), name: hr_name || '', role: role || '', score: Math.round(scoreEmail(email)) });
         }
