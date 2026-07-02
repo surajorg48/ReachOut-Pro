@@ -423,6 +423,15 @@ router.post('/discover', async (req, res) => {
                 results: allResults,
                 count: allResults.length,
             });
+
+            // Save to discover_history DB
+            try {
+                await db('discover_history').insert({
+                    query: fullQueries.join(' | '),
+                    result_count: allResults.length,
+                    results_json: JSON.stringify(allResults),
+                });
+            } catch (e) { console.error('Failed to save discover history:', e.message); }
         } catch (err) {
             const s = discoverSessions.get(discoverId);
             if (s) s.status = 'error';
@@ -479,6 +488,33 @@ router.post('/discover/:id/scrape', async (req, res) => {
 
     res.json({ sessionId, message: `Scraping ${urls.length} discovered websites with ${c} workers` });
     runSession(sessionId, c);
+});
+
+// ─── Discovery History ──────────────────────────────────────────────────────
+
+// GET /discover-history — Get all past discovery sessions
+router.get('/discover-history', async (req, res) => {
+    try {
+        const rows = await db('discover_history').orderBy('created_at', 'desc').limit(50);
+        const data = rows.map(r => ({ ...r, results: JSON.parse(r.results_json || '[]'), results_json: undefined }));
+        res.json(data);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /discover-history/:id — Delete a history entry
+router.delete('/discover-history/:id', async (req, res) => {
+    try {
+        await db('discover_history').where('id', req.params.id).delete();
+        res.json({ message: 'Deleted' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /discover-history — Clear all history
+router.delete('/discover-history', async (req, res) => {
+    try {
+        await db('discover_history').delete();
+        res.json({ message: 'All history cleared' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 module.exports = router;

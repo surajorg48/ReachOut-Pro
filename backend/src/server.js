@@ -20,21 +20,48 @@ app.use('/api/logs', require('./routes/email'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/resume', require('./routes/resume'));
 
-// Gmail OAuth callback
+// Gmail OAuth callback (supports both legacy and multi-account flows)
 app.get('/auth/callback', async (req, res) => {
-    const { handleAuthCallback } = require('./services/gmail.service');
+    const { handleAuthCallback, setActiveAccount } = require('./services/gmail.service');
     const db = require('./db/database');
     const { code } = req.query;
     if (!code) return res.status(400).send('No code provided');
     try {
-        await handleAuthCallback(code);
-        // Upsert gmail_connected flag so it works even on first run
-        const existing = await db('settings').where('key', 'gmail_connected').first();
-        if (existing) {
-            await db('settings').where('key', 'gmail_connected').update({ value: 'true' });
+        // Check if we're in multi-account flow
+        const pendingRow = await db('settings').where('key', '_pending_auth_account').first();
+        const pendingAccountId = pendingRow?.value ? parseInt(pendingRow.value) : null;
+
+        const fs = require('fs');
+        const path = require('path');
+        const logPath = path.join(__dirname, '../credentials/auth_error.log');
+        fs.appendFileSync(logPath, `\n[${new Date().toISOString()}] Started callback. pendingAccountId: ${pendingAccountId}\n`);
+
+        if (pendingAccountId) {
+            // Multi-account flow: get account from DB
+            const acc = await db('gmail_accounts').where('id', pendingAccountId).first();
+            if (acc) {
+                fs.appendFileSync(logPath, `Found account: ${acc.email}. credPath: ${acc.credentials_path}\n`);
+                await handleAuthCallback(code, acc.credentials_path, acc.token_path);
+                fs.appendFileSync(logPath, `handleAuthCallback succeeded.\n`);
+                await setActiveAccount(acc.id);
+                await db('settings').where('key', 'sender_email').update({ value: acc.email });
+                await db('settings').where('key', '_pending_auth_account').update({ value: '' });
+            } else {
+                fs.appendFileSync(logPath, `Account not found in DB for ID: ${pendingAccountId}\n`);
+                await handleAuthCallback(code);
+            }
         } else {
-            await db('settings').insert({ key: 'gmail_connected', value: 'true' });
+            fs.appendFileSync(logPath, `Legacy flow.\n`);
+            // Legacy single-account flow
+            await handleAuthCallback(code);
         }
+
+        // Upsert gmail_connected flag
+        const existing = await db('settings').where('key', 'gmail_connected').first();
+        if (existing) await db('settings').where('key', 'gmail_connected').update({ value: 'true' });
+        else await db('settings').insert({ key: 'gmail_connected', value: 'true' });
+        fs.appendFileSync(logPath, `Connected successfully.\n`);
+
         res.send(`
       <html><head><style>body{font-family:'Inter',sans-serif;background:#0a0a1b;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column;gap:16px}</style></head>
       <body><div style="font-size:60px">✅</div><h2>Gmail Connected!</h2><p style="color:#888">Closing in 3 seconds...</p>
@@ -44,6 +71,9 @@ app.get('/auth/callback', async (req, res) => {
       </script></body></html>
     `);
     } catch (err) {
+        const fs = require('fs');
+        const path = require('path');
+        fs.appendFileSync(path.join(__dirname, '../credentials/auth_error.log'), `\n[${new Date().toISOString()}] ERROR: ${err.message}\nStack: ${err.stack}\n`);
         res.status(500).send(`
       <html><head><style>body{font-family:'Inter',sans-serif;background:#0a0a1b;color:#ff6b6b;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column;gap:16px}</style></head>
       <body><div style="font-size:60px">❌</div><h2>Connection Failed</h2><p>${err.message}</p></body></html>

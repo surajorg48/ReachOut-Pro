@@ -175,8 +175,10 @@ router.get('/', async (req, res) => {
             'c.*',
             db.raw(`(SELECT email FROM contacts WHERE company_id = c.id ORDER BY score DESC LIMIT 1) as best_email`),
             db.raw(`(SELECT name FROM contacts WHERE company_id = c.id ORDER BY score DESC LIMIT 1) as hr_name`),
+            db.raw(`(SELECT phone FROM contacts WHERE company_id = c.id ORDER BY score DESC LIMIT 1) as hr_phone`),
             db.raw(`(SELECT score FROM contacts WHERE company_id = c.id ORDER BY score DESC LIMIT 1) as email_score`),
-            db.raw(`(SELECT COUNT(*) FROM contacts WHERE company_id = c.id) as email_count`)
+            db.raw(`(SELECT COUNT(*) FROM contacts WHERE company_id = c.id) as email_count`),
+            db.raw(`(SELECT json_group_array(json_object('id', id, 'email', email, 'name', name, 'phone', phone, 'score', score)) FROM (SELECT * FROM contacts WHERE company_id = c.id ORDER BY score DESC)) as contacts_json`)
         ).orderBy('c.created_at', 'desc').limit(parseInt(limit));
 
         if (search) query = query.where(b => b.whereLike('c.name', `%${search}%`).orWhereLike('c.website', `%${search}%`));
@@ -234,6 +236,19 @@ router.post('/:id/contacts', async (req, res) => {
         const { email, name, role } = req.body;
         await db('contacts').insert({ company_id: req.params.id, email, name: name || '', role: role || '', score: Math.round(scoreEmail(email)) });
         res.json({ message: 'Contact added' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT set primary contact
+router.put('/contacts/:contactId/primary', async (req, res) => {
+    try {
+        const contact = await db('contacts').where('id', req.params.contactId).first();
+        if (!contact) return res.status(404).json({ error: 'Contact not found' });
+        // Set all other contacts for this company to score=50
+        await db('contacts').where('company_id', contact.company_id).update({ score: 50 });
+        // Set this contact to score=100
+        await db('contacts').where('id', req.params.contactId).update({ score: 100 });
+        res.json({ message: 'Primary contact updated' });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -80,7 +80,7 @@ function buildRawEmail({ from, to, subject, htmlBody, textBody, attachmentPath }
  * This is more reliable than nodemailer OAuth2 transport for Google OAuth2 flows.
  */
 async function sendEmail({ to, toName, companyName, subject, templateContent, resumePath, campaignVars = {} }) {
-    const auth = getAuthenticatedClient();
+    const auth = await getAuthenticatedClient();
     const gmail = google.gmail({ version: 'v1', auth });
     const senderEmail = await getSenderEmail();
 

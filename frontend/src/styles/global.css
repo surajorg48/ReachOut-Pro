@@ -704,3 +704,166 @@ input[type="checkbox"] {
 
 .tab:hover { color: var(--text-secondary); }
 .tab.active { color: var(--accent-primary); border-bottom-color: var(--accent-primary); }
+
+/* ---- Skeleton Loaders ---- */
+@keyframes shimmer {
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.09) 40%,
+    rgba(255, 255, 255, 0.04) 80%
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 1.6s infinite linear;
+  display: block;
+}
+
+/* ---- Chart Container ---- */
+.chart-container {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  backdrop-filter: blur(10px);
+  transition: var(--transition);
+}
+
+.chart-container:hover {
+  border-color: var(--border-hover);
+}
+
+.chart-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.chart-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+}
+
+/* ---- Nav Icon SVG ---- */
+.nav-icon svg {
+  display: block;
+}
+
+/* ---- Stat card icon container ---- */
+.stat-icon-wrap {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.stat-icon-wrap.blue   { background: rgba(108, 99, 255, 0.15); color: var(--accent-primary); }
+.stat-icon-wrap.sky    { background: rgba(56, 189, 248, 0.15); color: var(--accent-info); }
+.stat-icon-wrap.green  { background: rgba(0, 212, 158, 0.15); color: var(--accent-success); }
+.stat-icon-wrap.amber  { background: rgba(245, 158, 11, 0.15); color: var(--accent-warning); }
+.stat-icon-wrap.pink   { background: rgba(255, 107, 157, 0.15); color: var(--accent-secondary); }
+.stat-icon-wrap.red    { background: rgba(255, 77, 109, 0.15); color: var(--accent-danger); }
+
+/* ---- Quick action list ---- */
+.quick-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+  text-align: left;
+  width: 100%;
+  font-family: 'Inter', sans-serif;
+}
+
+.quick-action-btn:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+  transform: translateX(2px);
+}
+
+.quick-action-btn .qa-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.quick-action-btn .qa-chevron {
+  margin-left: auto;
+  opacity: 0.4;
+  transition: var(--transition);
+}
+
+.quick-action-btn:hover .qa-chevron {
+  opacity: 1;
+  transform: translateX(2px);
+}
+
+/* ---- Activity Feed ---- */
+.activity-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.activity-item:last-child { border-bottom: none; }
+
+.activity-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.activity-dot.sent    { background: var(--accent-success); box-shadow: 0 0 6px rgba(0, 212, 158, 0.5); }
+.activity-dot.failed  { background: var(--accent-danger); }
+.activity-dot.pending { background: var(--accent-warning); }
+
+/* ---- Donut chart center text ---- */
+.donut-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+}
+
+/* ---- Tooltip for recharts ---- */
+.recharts-tooltip-wrapper .custom-tooltip {
+  background: #0f0f24;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.8rem;
+}
+
+/* ---- Page transition ---- */
+.page-container {
+  animation: fadeIn 0.18s ease;
+}
+

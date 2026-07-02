@@ -19,6 +19,7 @@ export const companiesApi = {
     bulkAdd: (companies) => api.post('/companies/bulk-add', { companies }),
     addContact: (id, data) => api.post(`/companies/${id}/contacts`, data),
     deleteContact: (contactId) => api.delete(`/companies/contacts/${contactId}`),
+    setPrimaryContact: (contactId) => api.put(`/companies/contacts/${contactId}/primary`),
     importExcel: (file) => {
         const fd = new FormData(); fd.append('file', file)
         return api.post('/companies/import-excel', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
@@ -62,6 +63,10 @@ export const scraperApi = {
     getDiscoverSession: (id) => api.get(`/scraper/discover/${id}`),
     stopDiscover: (id) => api.post(`/scraper/discover/${id}/stop`),
     scrapeDiscovered: (discoverId, concurrency) => api.post(`/scraper/discover/${discoverId}/scrape`, { concurrency }),
+    // Discovery History
+    getDiscoverHistory: () => api.get('/scraper/discover-history'),
+    deleteDiscoverHistory: (id) => api.delete(`/scraper/discover-history/${id}`),
+    clearDiscoverHistory: () => api.delete('/scraper/discover-history'),
 }
 
 // Email Logs
@@ -84,6 +89,20 @@ export const settingsApi = {
         const fd = new FormData(); fd.append('credentials', file)
         return api.post('/settings/gmail/credentials', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
     },
+    // Multi-account Gmail
+    getGmailAccounts: () => api.get('/settings/gmail/accounts'),
+    addGmailAccount: (email, label, credFile) => {
+        const fd = new FormData()
+        fd.append('email', email)
+        fd.append('label', label || email)
+        fd.append('credentials', credFile)
+        return api.post('/settings/gmail/accounts', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    },
+    activateGmailAccount: (id) => api.post(`/settings/gmail/accounts/${id}/activate`),
+    getAccountAuthUrl: (id) => api.get(`/settings/gmail/accounts/${id}/auth-url`),
+    removeGmailAccount: (id) => api.delete(`/settings/gmail/accounts/${id}`),
+    disconnectGmailAccount: (id) => api.post(`/settings/gmail/accounts/${id}/disconnect`),
+    // Templates
     getTemplate: () => api.get('/settings/template'),
     saveTemplate: (content) => api.put('/settings/template', { content }),
 }
@@ -100,3 +119,4 @@ export const resumeApi = {
 }
 
 export default api
+

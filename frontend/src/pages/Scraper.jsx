@@ -1,13 +1,31 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import { scraperApi } from '../api'
-import DiscoverScraper from './DiscoverScraper'
+import { DownloadIcon, UploadIcon, RefreshIcon, SendIcon, ScraperIcon, CheckIcon, AlertIcon } from '../components/Icons'
+
+const StopIcon = ({ size = 14 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+    </svg>
+)
+const PauseIcon = ({ size = 14 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+        <line x1="6" y1="4" x2="6" y2="20"/><line x1="18" y1="4" x2="18" y2="20"/>
+    </svg>
+)
+const PlayIcon = ({ size = 14 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+        <polygon points="5 3 19 12 5 21 5 3"/>
+    </svg>
+)
+const ListIcon = ({ size = 14 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+        <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+        <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+    </svg>
+)
 
 const CONCURRENCY_OPTIONS = [1, 2, 3, 4, 6, 8]
-const TABS = [
-    { id: 'url', label: '🔗 URL Scraper', desc: 'Paste website URLs to scrape' },
-    { id: 'discover', label: '🌐 Discover & Scrape', desc: 'Search Google to find companies' },
-]
 
 function formatTime(seconds) {
     if (!seconds || seconds <= 0) return '—'
@@ -62,14 +80,12 @@ function EmailPickerPopup({ result, sessionId, onClose, onPicked }) {
 }
 
 export default function Scraper() {
-    const [activeTab, setActiveTab] = useState('url')
     const [urls, setUrls] = useState('')
     const [concurrency, setConcurrency] = useState(3)
 
     const handleScrapeUrls = (urlList) => {
         setUrls(urlList.join('\n'))
-        setActiveTab('url')
-        toast.success(`📋 Loaded ${urlList.length} company URLs into the scraper!`)
+        toast.success(`Loaded ${urlList.length} company URLs into the scraper!`)
     }
     const [sessionId, setSessionId] = useState(null)
     const [session, setSession] = useState(null) // { status, total, done, results }
@@ -94,7 +110,7 @@ export default function Scraper() {
                     setSession(r2.data)
                     sessionRef.current = r2.data
                 })
-                toast('🔄 Reconnected to active scraping session', { icon: '🔍' })
+                toast('Reconnected to active scraping session')
             }
         }).catch(() => { })
     }, [])
@@ -236,36 +252,23 @@ export default function Scraper() {
             )}
 
             <div className="page-header">
-                <h1>🔍 Web Scraper</h1>
-                <p>Discover HR emails & phones from IT company websites — parallel scraping with real-time results</p>
+                <h1 style={{ display: 'flex', alignItems: 'center', gap: 10, margin: 0 }}>
+                    <ScraperIcon size={22} /> Web Scraper
+                </h1>
+                <p style={{ marginTop: 4 }}>Discover HR emails &amp; phones from company websites — parallel scraping with real-time results</p>
             </div>
 
-            {/* Tabs */}
+            {/* URL Scraper Panel */}
             {(!session || isDone) && (
-                <div className="tabs">
-                    {TABS.map(t => (
-                        <div
-                            key={t.id}
-                            className={`tab ${activeTab === t.id ? 'active' : ''}`}
-                            onClick={() => setActiveTab(t.id)}
-                            title={t.desc}
-                        >
-                            {t.label}
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {/* Top Controls */}
-            {!session || isDone ? (
-                activeTab === 'url' ? (
-                    <div className="grid-2" style={{ gap: 20, marginBottom: 20 }}>
+                <div className="grid-2" style={{ gap: 20, marginBottom: 20 }}>
                         {/* Input Panel */}
                         <div className="card">
                             <div className="card-header">
                                 <div className="card-title">Enter Company Websites</div>
                                 <div style={{ display: 'flex', gap: 6 }}>
-                                    <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current.click()}>📂 Import Excel/CSV</button>
+                                    <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current.click()} style={{ gap: 7 }}>
+                                        <UploadIcon size={13} /> Import Excel/CSV
+                                    </button>
                                     <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleFileImport} />
                                 </div>
                             </div>
@@ -299,13 +302,13 @@ export default function Scraper() {
                             </div>
 
                             <button className="btn btn-primary btn-lg" style={{ width: '100%' }} onClick={handleStart}>
-                                🚀 Start Scraping {urls.split('\n').filter(u => u.trim()).length > 0 ? `(${urls.split('\n').filter(u => u.trim()).length} sites)` : ''}
+                                <SendIcon size={16} /> Start Scraping {urls.split('\n').filter(u => u.trim()).length > 0 ? `(${urls.split('\n').filter(u => u.trim()).length} sites)` : ''}
                             </button>
                         </div>
 
                         {/* Quick Load */}
                         <div className="card">
-                            <div className="card-header"><div className="card-title">⚡ Quick Load — Top IT Companies</div></div>
+                            <div className="card-header"><div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><ListIcon size={15} /> Quick Load — Top IT Companies</div></div>
                             <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 12 }}>Click to add individual companies or load all at once</p>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
                                 {predefinedUrls.map(u => (
@@ -317,7 +320,7 @@ export default function Scraper() {
                             </div>
                             <div className="divider" />
                             <button className="btn btn-ghost" style={{ width: '100%', marginBottom: 12 }} onClick={() => setUrls(predefinedUrls.join('\n'))}>
-                                📋 Load All ({predefinedUrls.length} companies)
+                                Load All ({predefinedUrls.length} companies)
                             </button>
                             <div className="alert alert-warning">
                                 ⚠️ Scraping is subject to each site's robots.txt. Random delays are added between requests.
@@ -328,27 +331,26 @@ export default function Scraper() {
                                     <div className="divider" />
                                     <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 8 }}>Last session results:</div>
                                     <div style={{ display: 'flex', gap: 8 }}>
-                                        <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => scraperApi.exportExcel(sessionId)}>
-                                            📥 Export Excel
+                                        <button className="btn btn-ghost" style={{ flex: 1, gap: 7 }} onClick={() => scraperApi.exportExcel(sessionId)}>
+                                            <DownloadIcon size={14} /> Export Excel
                                         </button>
-                                        <button className="btn btn-ghost" style={{ flex: 1 }} onClick={handleNewScrape}>
-                                            🔄 New Scrape
+                                        <button className="btn btn-ghost" style={{ flex: 1, gap: 7 }} onClick={handleNewScrape}>
+                                            <RefreshIcon size={14} /> New Scrape
                                         </button>
                                     </div>
                                 </div>
                             )}
                         </div>
                     </div>
-                ) : (
-                    <DiscoverScraper onScrapeUrls={handleScrapeUrls} />
-                )
-            ) : (
-                /* ── Active Session Status Bar ── */
+            )}
+
+            {/* Active Session Status Bar */}
+            {session && !isDone && (
                 <div className="card" style={{ marginBottom: 20 }}>
                     <div className="card-header">
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                             {isRunning && <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2, flexShrink: 0 }} />}
-                            {isPaused && <span style={{ fontSize: '1.2rem' }}>⏸</span>}
+                            {isPaused && <PauseIcon size={18} />}
                             <div>
                                 <div className="card-title" style={{ marginBottom: 2 }}>
                                     {isRunning ? 'Scraping in Progress' : isPaused ? 'Scraping Paused' : 'Scraping'}
@@ -362,14 +364,14 @@ export default function Scraper() {
                         </div>
                         <div style={{ display: 'flex', gap: 8 }}>
                             {isRunning && (
-                                <button className="btn btn-ghost btn-sm" onClick={handlePause}>⏸ Pause</button>
+                                <button className="btn btn-ghost btn-sm" onClick={handlePause} style={{ gap: 6 }}><PauseIcon /> Pause</button>
                             )}
                             {isPaused && (
-                                <button className="btn btn-primary btn-sm" onClick={handleResume}>▶️ Resume</button>
+                                <button className="btn btn-primary btn-sm" onClick={handleResume} style={{ gap: 6 }}><PlayIcon /> Resume</button>
                             )}
-                            <button className="btn btn-danger btn-sm" onClick={handleStop}>🛑 Stop</button>
-                            <button className="btn btn-ghost btn-sm" onClick={() => scraperApi.exportExcel(sessionId)} disabled={!session.results?.length}>
-                                📥 Export
+                            <button className="btn btn-danger btn-sm" onClick={handleStop} style={{ gap: 6 }}><StopIcon /> Stop</button>
+                            <button className="btn btn-ghost btn-sm" onClick={() => scraperApi.exportExcel(sessionId)} disabled={!session.results?.length} style={{ gap: 6 }}>
+                                <DownloadIcon size={14} /> Export
                             </button>
                         </div>
                     </div>
@@ -409,22 +411,22 @@ export default function Scraper() {
                 <div className="card">
                     <div className="card-header">
                         <div className="card-title">
-                            📊 Results — {session.results.length} processed
+                            Results — {session.results.length} processed
                             {isDone && <span style={{ marginLeft: 8, fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 400 }}>
                                 · session {isDone && session.status === 'stopped' ? '(stopped)' : '(complete)'}
                             </span>}
                         </div>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.8rem', color: 'var(--accent-success)' }}>
-                                ✅ {session.results.filter(r => r.emails?.length > 0).length} with emails
+                            <span style={{ fontSize: '0.8rem', color: 'var(--accent-success)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                                <CheckIcon size={13} /> {session.results.filter(r => r.emails?.length > 0).length} with emails
                             </span>
                             {sessionId && (
-                                <button className="btn btn-ghost btn-sm" onClick={() => scraperApi.exportExcel(sessionId)}>
-                                    📥 Export Excel
+                                <button className="btn btn-ghost btn-sm" onClick={() => scraperApi.exportExcel(sessionId)} style={{ gap: 6 }}>
+                                    <DownloadIcon size={13} /> Export Excel
                                 </button>
                             )}
                             {isDone && (
-                                <button className="btn btn-ghost btn-sm" onClick={handleNewScrape}>🔄 New Scrape</button>
+                                <button className="btn btn-ghost btn-sm" onClick={handleNewScrape} style={{ gap: 6 }}><RefreshIcon size={13} /> New Scrape</button>
                             )}
                         </div>
                     </div>
@@ -473,21 +475,21 @@ export default function Scraper() {
                                                     <span className={`badge ${emailCount > 0 ? (hasMultiple ? 'badge-pending' : 'badge-sent') : 'badge-failed'}`}
                                                         style={{ cursor: emailCount > 0 ? 'pointer' : 'default' }}
                                                         title={hasMultiple ? 'Click to pick best email' : ''}>
-                                                        {emailCount > 0 ? `📧 ${emailCount} found${hasMultiple ? ' ▾' : ''}` : '—'}
+                                                        {emailCount > 0 ? `${emailCount} email${emailCount > 1 ? 's' : ''} found${hasMultiple ? ' ▾' : ''}` : '—'}
                                                     </span>
                                                 </button>
                                             </td>
                                             <td>
                                                 {r.status === 'done' ? (
                                                     <span className={`badge ${emailCount > 0 ? 'badge-sent' : 'badge-pending'}`}>
-                                                        {emailCount > 0 ? '✅ Found' : '⚠️ None'}
+                                                        {emailCount > 0 ? 'Found' : 'None'}
                                                     </span>
                                                 ) : r.status === 'error' ? (
-                                                    <span className="badge badge-failed">❌ Error</span>
+                                                    <span className="badge badge-failed">Error</span>
                                                 ) : r.status === 'cancelled' ? (
-                                                    <span className="badge badge-pending">🛑 Stopped</span>
+                                                    <span className="badge badge-pending">Stopped</span>
                                                 ) : (
-                                                    <span className="badge badge-pending">⏳ Pending</span>
+                                                    <span className="badge badge-pending">Pending</span>
                                                 )}
                                             </td>
                                         </tr>
@@ -496,8 +498,8 @@ export default function Scraper() {
                             </tbody>
                         </table>
                     </div>
-                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 12 }}>
-                        ✅ All discovered emails & phones are saved to the Companies database automatically.
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <CheckIcon size={13} style={{ color: 'var(--accent-success)' }} /> All discovered emails &amp; phones are saved to the Companies database automatically.
                     </p>
                 </div>
             )}

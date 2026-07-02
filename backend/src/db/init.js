@@ -71,6 +71,26 @@ async function initializeDatabase() {
     t.text('value');
   });
 
+  // Gmail Accounts (multi-account support)
+  await db.schema.createTableIfNotExists('gmail_accounts', t => {
+    t.increments('id').primary();
+    t.string('email').notNullable();
+    t.string('label').defaultTo('');
+    t.string('credentials_path').notNullable();
+    t.string('token_path').notNullable();
+    t.boolean('is_active').defaultTo(false);
+    t.timestamp('connected_at').defaultTo(db.fn.now());
+  });
+
+  // Discover History
+  await db.schema.createTableIfNotExists('discover_history', t => {
+    t.increments('id').primary();
+    t.string('query').notNullable();
+    t.integer('result_count').defaultTo(0);
+    t.text('results_json').defaultTo('[]');
+    t.timestamp('created_at').defaultTo(db.fn.now());
+  });
+
   // Default settings
   const defaults = [
     { key: 'sender_email', value: 'surajorg47@gmail.com' },
@@ -83,6 +103,7 @@ async function initializeDatabase() {
     { key: 'applicant_phone', value: '' },
     { key: 'applicant_linkedin', value: '' },
     { key: 'applicant_github', value: '' },
+    { key: 'active_gmail_account', value: '' },
   ];
 
   for (const d of defaults) {

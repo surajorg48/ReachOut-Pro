@@ -4,8 +4,15 @@ const db = require('../db/database');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
-const { generateAuthUrl, handleAuthCallback, disconnectGmail, getStatus, CREDENTIALS_PATH } = require('../services/gmail.service');
-const credUpload = multer({ dest: path.join(__dirname, '../../credentials/') });
+const {
+    generateAuthUrl, handleAuthCallback, disconnectGmail, getStatus,
+    CREDENTIALS_PATH, addAccount, removeAccount, getAllAccounts,
+    getActiveAccount, setActiveAccount, BASE_CRED_DIR,
+} = require('../services/gmail.service');
+
+const credUpload = multer({ dest: path.join(__dirname, '../../credentials/tmp/') });
+
+// ── General Settings ─────────────────────────────────────────────────────────
 
 // GET all settings
 router.get('/', async (req, res) => {
@@ -13,14 +20,31 @@ router.get('/', async (req, res) => {
         const rows = await db('settings').select('key', 'value');
         const settings = rows.reduce((acc, r) => { acc[r.key] = r.value; return acc; }, {});
         const gmailStatus = getStatus();
-        res.json({ ...settings, ...gmailStatus });
+        const accounts = await getAllAccounts();
+        const active = await getActiveAccount();
+        
+        // Multi-account connection check
+        const accountsWithStatus = accounts.map(acc => ({
+            ...acc,
+            isConnected: fs.existsSync(acc.token_path)
+        }));
+        const anyConnected = accountsWithStatus.some(acc => acc.isConnected);
+        
+        res.json({ 
+            ...settings, 
+            ...gmailStatus, 
+            gmailConnected: gmailStatus.gmailConnected || anyConnected,
+            gmail_accounts: accountsWithStatus, 
+            active_account: active 
+        });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // PUT update settings
 router.put('/', async (req, res) => {
     try {
-        const allowed = ['sender_email', 'test_email', 'send_delay_ms', 'resume_path', 'applicant_name', 'applicant_phone', 'applicant_linkedin', 'applicant_github'];
+        const allowed = ['sender_email', 'test_email', 'send_delay_ms', 'resume_path',
+            'applicant_name', 'applicant_phone', 'applicant_linkedin', 'applicant_github'];
         for (const key of allowed) {
             if (req.body[key] !== undefined) {
                 const exists = await db('settings').where('key', key).first();
@@ -32,6 +56,8 @@ router.put('/', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Gmail OAuth (legacy single-account) ──────────────────────────────────────
+
 // GET Gmail auth URL
 router.get('/gmail/auth-url', (req, res) => {
     try { res.json({ url: generateAuthUrl() }); }
@@ -39,11 +65,21 @@ router.get('/gmail/auth-url', (req, res) => {
 });
 
 // GET Gmail status
-router.get('/gmail/status', (req, res) => {
-    res.json(getStatus());
+router.get('/gmail/status', async (req, res) => {
+    const status = getStatus();
+    try {
+        const accounts = await getAllAccounts();
+        const anyConnected = accounts.some(acc => fs.existsSync(acc.token_path));
+        res.json({
+            ...status,
+            gmailConnected: status.gmailConnected || anyConnected
+        });
+    } catch (e) {
+        res.json(status);
+    }
 });
 
-// POST disconnect
+// POST disconnect (legacy)
 router.post('/gmail/disconnect', async (req, res) => {
     try {
         disconnectGmail();
@@ -52,7 +88,7 @@ router.post('/gmail/disconnect', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST upload credentials.json
+// POST upload credentials.json (legacy)
 router.post('/gmail/credentials', credUpload.single('credentials'), (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     const destPath = CREDENTIALS_PATH;
@@ -61,6 +97,85 @@ router.post('/gmail/credentials', credUpload.single('credentials'), (req, res) =
     fs.renameSync(req.file.path, destPath);
     res.json({ message: 'credentials.json uploaded. Now connect Gmail.' });
 });
+
+// ── Gmail Multi-Account ──────────────────────────────────────────────────────
+
+// GET all gmail accounts
+router.get('/gmail/accounts', async (req, res) => {
+    try {
+        const accounts = await getAllAccounts();
+        const active = await getActiveAccount();
+        const accountsWithStatus = accounts.map(acc => ({
+            ...acc,
+            isConnected: fs.existsSync(acc.token_path)
+        }));
+        res.json({ accounts: accountsWithStatus, activeId: active?.id || null });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST add new gmail account (upload credentials.json + email)
+router.post('/gmail/accounts', credUpload.single('credentials'), async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'No credentials.json file uploaded' });
+    const { email, label } = req.body;
+    if (!email) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({ error: 'Email address is required' });
+    }
+    try {
+        const account = await addAccount(email, label || email, req.file.path);
+        res.json({ message: `Account ${email} added`, account });
+    } catch (e) {
+        try { fs.unlinkSync(req.file.path); } catch { }
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// POST set active account
+router.post('/gmail/accounts/:id/activate', async (req, res) => {
+    try {
+        const acc = await db('gmail_accounts').where('id', req.params.id).first();
+        if (!acc) return res.status(404).json({ error: 'Account not found' });
+        await setActiveAccount(parseInt(req.params.id));
+        // Also update sender_email setting to match
+        await db('settings').where('key', 'sender_email').update({ value: acc.email });
+        res.json({ message: `Active account set to ${acc.email}` });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET auth URL for a specific account
+router.get('/gmail/accounts/:id/auth-url', async (req, res) => {
+    try {
+        const acc = await db('gmail_accounts').where('id', req.params.id).first();
+        if (!acc) return res.status(404).json({ error: 'Account not found' });
+        const url = generateAuthUrl(acc.credentials_path);
+        // Store pending account id for the callback
+        await db('settings').where('key', 'active_gmail_account').update({ value: '' });
+        // Temporarily store which account is being authorized
+        const exists = await db('settings').where('key', '_pending_auth_account').first();
+        if (exists) await db('settings').where('key', '_pending_auth_account').update({ value: String(acc.id) });
+        else await db('settings').insert({ key: '_pending_auth_account', value: String(acc.id) });
+        res.json({ url });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE remove account
+router.delete('/gmail/accounts/:id', async (req, res) => {
+    try {
+        await removeAccount(parseInt(req.params.id));
+        res.json({ message: 'Account removed' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST disconnect specific account
+router.post('/gmail/accounts/:id/disconnect', async (req, res) => {
+    try {
+        const { disconnectAccount } = require('../services/gmail.service');
+        await disconnectAccount(parseInt(req.params.id));
+        res.json({ message: 'Account disconnected' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Templates ────────────────────────────────────────────────────────────────
 
 // GET template
 router.get('/template', (req, res) => {

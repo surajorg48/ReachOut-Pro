@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { companiesApi, campaignsApi } from '../api'
+import { SendIcon, TrashIcon, DownloadIcon, UploadIcon, ExportIcon, PlusIcon, XIcon, CompaniesIcon } from '../components/Icons'
 
 export default function Companies() {
     const [companies, setCompanies] = useState([])
@@ -9,6 +10,7 @@ export default function Companies() {
     const [loading, setLoading] = useState(true)
     const [search, setSearch] = useState('')
     const [statusFilter, setStatusFilter] = useState('')
+    const [sortBy, setSortBy] = useState('newest') // newest, oldest, city
     const [selected, setSelected] = useState(new Set())
     const [showAddModal, setShowAddModal] = useState(false)
     const [addForm, setAddForm] = useState({ name: '', website: '', email: '', hr_name: '', city: '', industry: 'IT' })
@@ -123,35 +125,61 @@ export default function Companies() {
         </div>
     )
 
+    const handleSetPrimary = async (contactId) => {
+        try {
+            await companiesApi.setPrimaryContact(contactId)
+            toast.success('Primary email updated')
+            load()
+        } catch (e) { toast.error(e.message) }
+    }
+
+    // Sorting logic
+    const sortedCompanies = [...companies].sort((a, b) => {
+        if (sortBy === 'newest') return new Date(b.created_at) - new Date(a.created_at)
+        if (sortBy === 'oldest') return new Date(a.created_at) - new Date(b.created_at)
+        if (sortBy === 'city') return (a.city || '').localeCompare(b.city || '')
+        return 0
+    })
+
     return (
         <div className="page-container">
             <div className="page-header">
-                <h1>🏢 Companies</h1>
-                <p>{total} companies found • {[...selected].length > 0 ? `${selected.size} selected` : 'Select companies to send emails'}</p>
+                <h1 style={{ display: 'flex', alignItems: 'center', gap: 10, margin: 0 }}>
+                    <CompaniesIcon size={22} /> Companies
+                </h1>
+                <p style={{ margin: '4px 0 0 0' }}>{total} companies found • {[...selected].length > 0 ? `${selected.size} selected` : 'Select companies to send emails'}</p>
             </div>
 
             <div className="toolbar">
                 <div className="toolbar-search">
-                    <span className="search-icon">🔍</span>
-                    <input className="input" placeholder="Search companies..." value={search} onChange={e => setSearch(e.target.value)} />
-                </div>
+                    <span className="search-icon">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                        </svg>
+                    </span>
+                    <input className="input" placeholder="Search companies..." value={search} onChange={e => setSearch(e.target.value)} /></div>
                 <select className="select" style={{ width: 160 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
                     {statusOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
+                <select className="select" style={{ width: 160 }} value={sortBy} onChange={e => setSortBy(e.target.value)}>
+                    <option value="newest">Newest First</option>
+                    <option value="oldest">Oldest First</option>
+                    <option value="city">Sort by City</option>
+                </select>
 
                 <div className="toolbar-actions">
-                    <button className="btn btn-ghost btn-sm" onClick={() => companiesApi.downloadTemplate()} data-tooltip="Download blank Excel template">
-                        📥 Template
+                    <button className="btn btn-ghost btn-sm" onClick={() => companiesApi.downloadTemplate()} data-tooltip="Download blank Excel template" style={{ gap: 7 }}>
+                        <DownloadIcon size={14} /> Template
                     </button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current.click()} disabled={!!importProgress}>
-                        📂 {importProgress || 'Import Excel'}
+                    <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current.click()} disabled={!!importProgress} style={{ gap: 7 }}>
+                        <UploadIcon size={14} /> {importProgress || 'Import Excel'}
                     </button>
                     <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleImportExcel} />
-                    <button className="btn btn-ghost btn-sm" onClick={() => companiesApi.exportExcel()}>
-                        📤 Export
+                    <button className="btn btn-ghost btn-sm" onClick={() => companiesApi.exportExcel()} style={{ gap: 7 }}>
+                        <ExportIcon size={14} /> Export
                     </button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setShowAddModal(true)}>
-                        ➕ Add
+                    <button className="btn btn-ghost btn-sm" onClick={() => setShowAddModal(true)} style={{ gap: 7 }}>
+                        <PlusIcon size={14} /> Add
                     </button>
                 </div>
             </div>
@@ -159,15 +187,15 @@ export default function Companies() {
             {/* Selection Action Bar */}
             {selected.size > 0 && (
                 <div className="selection-bar">
-                    <span>✓ {selected.size} selected</span>
-                    <button className="btn btn-success btn-sm" onClick={() => openSendDialog('selected')} disabled={sending}>
-                        {sending ? '⏳' : '📤'} Send to Selected
+                    <span>&#10003; {selected.size} selected</span>
+                    <button className="btn btn-success btn-sm" onClick={() => openSendDialog('selected')} disabled={sending} style={{ gap: 7 }}>
+                        {sending ? <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> : <SendIcon size={14} />} Send to Selected
                     </button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => companiesApi.bulkStatus([...selected], 'not_interested').then(() => { toast.success('Marked as Not Interested'); load() })}>
-                        🚫 Not Interested
+                    <button className="btn btn-ghost btn-sm" onClick={() => companiesApi.bulkStatus([...selected], 'not_interested').then(() => { toast.success('Marked as Not Interested'); load() })} style={{ gap: 7 }}>
+                        <XIcon size={14} /> Not Interested
                     </button>
-                    <button className="btn btn-danger btn-sm" onClick={handleBulkDelete}>🗑️ Delete</button>
-                    <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setSelected(new Set())}>✕ Clear</button>
+                    <button className="btn btn-danger btn-sm" onClick={handleBulkDelete} style={{ gap: 7 }}><TrashIcon size={14} /> Delete</button>
+                    <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto', gap: 6 }} onClick={() => setSelected(new Set())}><XIcon size={14} /> Clear</button>
                 </div>
             )}
 
@@ -194,6 +222,7 @@ export default function Companies() {
                                 <th><input type="checkbox" checked={selected.size === companies.length && companies.length > 0} onChange={toggleAll} /></th>
                                 <th>Company</th>
                                 <th>HR Email</th>
+                                <th>Phone</th>
                                 <th>Email Score</th>
                                 <th>City</th>
                                 <th>Status</th>
@@ -201,7 +230,9 @@ export default function Companies() {
                             </tr>
                         </thead>
                         <tbody>
-                            {companies.map(c => (
+                            {sortedCompanies.map(c => {
+                                const contactList = c.contacts_json ? JSON.parse(c.contacts_json) : []
+                                return (
                                 <tr key={c.id} className={selected.has(c.id) ? 'selected' : ''}>
                                     <td><input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleSelect(c.id)} /></td>
                                     <td className="bold">
@@ -211,9 +242,30 @@ export default function Companies() {
                                     <td>
                                         {c.best_email ? (
                                             <div>
-                                                <div className="mono" style={{ color: 'var(--accent-info)', fontSize: '0.8rem' }}>{c.best_email}</div>
+                                                <div className="mono" style={{ color: 'var(--accent-info)', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    {c.best_email}
+                                                    {contactList.length > 1 && (
+                                                        <select 
+                                                            className="select" 
+                                                            style={{ padding: '0 4px', fontSize: '0.7rem', height: '20px', width: '20px' }}
+                                                            onChange={(e) => handleSetPrimary(e.target.value)}
+                                                            title="Change Primary Email"
+                                                        >
+                                                            {contactList.map(ct => (
+                                                                <option key={ct.id} value={ct.id}>
+                                                                    {ct.email} {ct.id === contactList[0].id ? '(Primary)' : ''}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    )}
+                                                </div>
                                                 {c.hr_name && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{c.hr_name}</div>}
                                             </div>
+                                        ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                                    </td>
+                                    <td>
+                                        {c.hr_phone ? (
+                                            <span style={{ fontSize: '0.82rem', color: 'var(--text)' }}>{c.hr_phone}</span>
                                         ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                                     </td>
                                     <td>{c.email_score ? scoreBar(c.email_score) : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
@@ -225,12 +277,12 @@ export default function Companies() {
                                                 const id = c.id
                                                 openSendDialog('selected')
                                                 setSelected(new Set([id]))
-                                            }} data-tooltip="Send email">📤</button>
-                                            <button className="btn btn-danger btn-sm btn-icon" onClick={() => handleDelete(c.id)} data-tooltip="Delete">🗑️</button>
+                                            }} data-tooltip="Send email"><SendIcon /></button>
+                        <button className="btn btn-danger btn-sm btn-icon" onClick={() => handleDelete(c.id)} data-tooltip="Delete"><TrashIcon size={14} /></button>
                                         </div>
                                     </td>
                                 </tr>
-                            ))}
+                            )})}
                         </tbody>
                     </table>
                 )}
