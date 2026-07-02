@@ -31,29 +31,19 @@ app.get('/auth/callback', async (req, res) => {
         const pendingRow = await db('settings').where('key', '_pending_auth_account').first();
         const pendingAccountId = pendingRow?.value ? parseInt(pendingRow.value) : null;
 
-        const fs = require('fs');
-        const path = require('path');
-        const logPath = path.join(__dirname, '../credentials/auth_error.log');
-        fs.appendFileSync(logPath, `\n[${new Date().toISOString()}] Started callback. pendingAccountId: ${pendingAccountId}\n`);
-
         if (pendingAccountId) {
             // Multi-account flow: get account from DB
             const acc = await db('gmail_accounts').where('id', pendingAccountId).first();
             if (acc) {
-                fs.appendFileSync(logPath, `Found account: ${acc.email}. credPath: ${acc.credentials_path}\n`);
-                await handleAuthCallback(code, acc.credentials_path, acc.token_path);
-                fs.appendFileSync(logPath, `handleAuthCallback succeeded.\n`);
+                await handleAuthCallback(code, acc.id);
                 await setActiveAccount(acc.id);
                 await db('settings').where('key', 'sender_email').update({ value: acc.email });
                 await db('settings').where('key', '_pending_auth_account').update({ value: '' });
             } else {
-                fs.appendFileSync(logPath, `Account not found in DB for ID: ${pendingAccountId}\n`);
-                await handleAuthCallback(code);
+                throw new Error('Account not found in DB for ID: ' + pendingAccountId);
             }
         } else {
-            fs.appendFileSync(logPath, `Legacy flow.\n`);
-            // Legacy single-account flow
-            await handleAuthCallback(code);
+            throw new Error('No pending authentication found. Please restart the auth flow from Settings.');
         }
 
         // Upsert gmail_connected flag

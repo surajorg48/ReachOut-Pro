@@ -5,9 +5,8 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const {
-    generateAuthUrl, handleAuthCallback, disconnectGmail, getStatus,
-    CREDENTIALS_PATH, addAccount, removeAccount, getAllAccounts,
-    getActiveAccount, setActiveAccount, BASE_CRED_DIR,
+    generateAuthUrl, getStatus, addAccount, removeAccount, getAllAccounts,
+    getActiveAccount, setActiveAccount, disconnectAccount
 } = require('../services/gmail.service');
 
 const credUpload = multer({ dest: path.join(__dirname, '../../credentials/tmp/') });
@@ -24,10 +23,15 @@ router.get('/', async (req, res) => {
         const active = await getActiveAccount();
         
         // Multi-account connection check
-        const accountsWithStatus = accounts.map(acc => ({
-            ...acc,
-            isConnected: fs.existsSync(acc.token_path)
-        }));
+        const accountsWithStatus = accounts.map(acc => {
+            const accCopy = { ...acc };
+            delete accCopy.credentials_json; // Don't send secrets to frontend
+            delete accCopy.token_json;
+            return {
+                ...accCopy,
+                isConnected: !!acc.token_json
+            };
+        });
         const anyConnected = accountsWithStatus.some(acc => acc.isConnected);
         
         res.json({ 
@@ -66,37 +70,15 @@ router.get('/gmail/auth-url', (req, res) => {
 
 // GET Gmail status
 router.get('/gmail/status', async (req, res) => {
-    const status = getStatus();
     try {
-        const accounts = await getAllAccounts();
-        const anyConnected = accounts.some(acc => fs.existsSync(acc.token_path));
-        res.json({
-            ...status,
-            gmailConnected: status.gmailConnected || anyConnected
-        });
-    } catch (e) {
+        const status = await getStatus();
         res.json(status);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 });
 
-// POST disconnect (legacy)
-router.post('/gmail/disconnect', async (req, res) => {
-    try {
-        disconnectGmail();
-        await db('settings').where('key', 'gmail_connected').update({ value: 'false' });
-        res.json({ message: 'Disconnected' });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// POST upload credentials.json (legacy)
-router.post('/gmail/credentials', credUpload.single('credentials'), (req, res) => {
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const destPath = CREDENTIALS_PATH;
-    const credDir = path.dirname(destPath);
-    if (!fs.existsSync(credDir)) fs.mkdirSync(credDir, { recursive: true });
-    fs.renameSync(req.file.path, destPath);
-    res.json({ message: 'credentials.json uploaded. Now connect Gmail.' });
-});
+// Legacy routes removed for Postgres deployment
 
 // ── Gmail Multi-Account ──────────────────────────────────────────────────────
 
@@ -105,10 +87,15 @@ router.get('/gmail/accounts', async (req, res) => {
     try {
         const accounts = await getAllAccounts();
         const active = await getActiveAccount();
-        const accountsWithStatus = accounts.map(acc => ({
-            ...acc,
-            isConnected: fs.existsSync(acc.token_path)
-        }));
+        const accountsWithStatus = accounts.map(acc => {
+            const accCopy = { ...acc };
+            delete accCopy.credentials_json;
+            delete accCopy.token_json;
+            return {
+                ...accCopy,
+                isConnected: !!acc.token_json
+            };
+        });
         res.json({ accounts: accountsWithStatus, activeId: active?.id || null });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -147,7 +134,8 @@ router.get('/gmail/accounts/:id/auth-url', async (req, res) => {
     try {
         const acc = await db('gmail_accounts').where('id', req.params.id).first();
         if (!acc) return res.status(404).json({ error: 'Account not found' });
-        const url = generateAuthUrl(acc.credentials_path);
+        const creds = JSON.parse(acc.credentials_json);
+        const url = generateAuthUrl(creds);
         // Store pending account id for the callback
         await db('settings').where('key', 'active_gmail_account').update({ value: '' });
         // Temporarily store which account is being authorized
@@ -169,7 +157,6 @@ router.delete('/gmail/accounts/:id', async (req, res) => {
 // POST disconnect specific account
 router.post('/gmail/accounts/:id/disconnect', async (req, res) => {
     try {
-        const { disconnectAccount } = require('../services/gmail.service');
         await disconnectAccount(parseInt(req.params.id));
         res.json({ message: 'Account disconnected' });
     } catch (e) { res.status(500).json({ error: e.message }); }
