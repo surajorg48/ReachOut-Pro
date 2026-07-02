@@ -9,11 +9,21 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-const allowedOrigins = ['http://localhost:5173', 'http://localhost:3000', 'https://reachout-pro.vercel.app'];
-if (process.env.FRONTEND_URL) {
-    allowedOrigins.push(process.env.FRONTEND_URL);
-}
-app.use(cors({ origin: allowedOrigins, credentials: true }));
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        const allowed = ['http://localhost:5173', 'http://localhost:3000', 'https://reachout-pro.vercel.app'];
+        if (process.env.FRONTEND_URL) {
+            allowed.push(process.env.FRONTEND_URL);
+        }
+        if (allowed.includes(origin) || origin.endsWith('.vercel.app')) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true
+}));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
